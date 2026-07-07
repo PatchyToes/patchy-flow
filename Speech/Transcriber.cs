@@ -59,18 +59,39 @@ public sealed class Transcriber : IDisposable
         await foreach (var segment in processor.ProcessAsync(samples))
             sb.Append(segment.Text);
 
-        var text = CleanUp(sb.ToString());
+        var text = CleanUp(sb.ToString(), prompt);
         Log.Write($"Transcribed {samples.Length / 16000.0:0.0}s of audio in {sw.ElapsedMilliseconds}ms -> {text.Length} chars");
         return text;
     }
 
-    private static string CleanUp(string text)
+    private static string CleanUp(string text, string? prompt)
     {
         // whisper noise artifacts like [BLANK_AUDIO], [MUSIC], ♪ — not real speech
         text = Regex.Replace(text, @"\[(?:BLANK_AUDIO|MUSIC|NOISE|SILENCE|INAUDIBLE)[^\]]*\]", "", RegexOptions.IgnoreCase);
         text = text.Replace("♪", "");
         text = Regex.Replace(text, @"\s+", " ");
+        text = StripLeakedPrompt(text.Trim(), prompt);
         return text.Trim();
+    }
+
+    /// <summary>
+    /// Whisper sometimes echoes its initial prompt at the very start of the output.
+    /// Strip a leaked "Glossary: …." lead-in, or the prompt verbatim if it leaked whole.
+    /// </summary>
+    private static string StripLeakedPrompt(string text, string? prompt)
+    {
+        if (string.IsNullOrWhiteSpace(prompt) || text.Length == 0) return text;
+
+        // whole-prompt leak (verbatim, case/space-insensitive at the start)
+        if (text.StartsWith(prompt, StringComparison.OrdinalIgnoreCase))
+            return text[prompt.Length..].TrimStart(' ', ',', '.', '-');
+
+        // partial "Glossary: ...." lead-in (the prompt starts with "Glossary:")
+        var m = Regex.Match(text, @"^\s*Glossary:.*?\.\s*", RegexOptions.IgnoreCase);
+        if (m.Success && m.Length < text.Length)
+            return text[m.Length..];
+
+        return text;
     }
 
     public void Dispose() => _factory?.Dispose();

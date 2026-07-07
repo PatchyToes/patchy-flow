@@ -179,9 +179,11 @@ public sealed class FlowController : IDisposable
 
             _overlay?.ShowProcessing();
 
+            // ONLY the dictionary glossary goes to Whisper. Do NOT add the app/window
+            // title here — Whisper occasionally echoes its initial prompt at the start
+            // of the transcript, and an arbitrary window title leaks as junk ("Claudius
+            // S…"). App/window context still reaches the cleanup pass, which won't parrot it.
             var whisperPrompt = _dictionary.BuildWhisperPrompt();
-            if (_dictationTarget != null)
-                whisperPrompt = $"{whisperPrompt} Context: {_dictationTarget.Describe()}.".Trim();
 
             var text = await _transcriber.TranscribeAsync(samples, _settings.Language, whisperPrompt);
             text = _dictionary.Apply(text);
