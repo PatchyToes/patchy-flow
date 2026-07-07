@@ -39,8 +39,12 @@ public partial class AdminWindow : Window
 
         CEnabled.IsChecked = s.CleanupEnabled;
         CContext.IsChecked = s.ContextAwareness;
+        // Default any unknown persisted value to Anthropic (index 0).
+        CEngine.SelectedIndex = string.Equals(s.CleanupEngine, "Local", StringComparison.OrdinalIgnoreCase) ? 1 : 0;
         CApiKey.Text = s.AnthropicApiKey;
         CModel.Text = s.CleanupModel;
+        CLocalEndpoint.Text = s.LocalEndpoint;
+        CLocalModel.Text = s.LocalModel;
 
         SEnabled.IsChecked = s.Screenshot.Enabled;
         SHotkey.Load(s.Screenshot.Hotkey);
@@ -77,8 +81,11 @@ public partial class AdminWindow : Window
 
         s.CleanupEnabled = CEnabled.IsChecked == true;
         s.ContextAwareness = CContext.IsChecked == true;
+        s.CleanupEngine = CEngine.SelectedIndex == 1 ? "Local" : "Anthropic";
         s.AnthropicApiKey = CApiKey.Text.Trim();
         s.CleanupModel = string.IsNullOrWhiteSpace(CModel.Text) ? "claude-haiku-4-5" : CModel.Text.Trim();
+        s.LocalEndpoint = string.IsNullOrWhiteSpace(CLocalEndpoint.Text) ? "http://localhost:11434" : CLocalEndpoint.Text.Trim();
+        s.LocalModel = string.IsNullOrWhiteSpace(CLocalModel.Text) ? "qwen3:8b" : CLocalModel.Text.Trim();
 
         s.Screenshot.Enabled = SEnabled.IsChecked == true;
         s.Screenshot.Hotkey = SHotkey.Value;

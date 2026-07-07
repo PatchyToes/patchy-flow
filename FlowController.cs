@@ -109,6 +109,10 @@ public sealed class FlowController : IDisposable
             try { await _transcriber.TranscribeAsync(new float[8000], _settings.Language, null); }
             catch (Exception ex) { Log.Write($"Warm-up inference failed (non-fatal): {ex.Message}"); }
 
+            // pre-load + pin the local cleanup model so the first dictation doesn't
+            // cold-load it inside the cleanup timeout. WarmAsync never throws.
+            WarmLocalCleanupIfNeeded();
+
             _tray?.Balloon("PatchyFlow ready",
                 $"Hold {_settings.Hotkey.Describe()} and talk. Runtime: {_transcriber.LoadedRuntime}");
         }
@@ -291,11 +295,31 @@ public sealed class FlowController : IDisposable
         _display?.ApplySettings();
         _repaste?.ApplySettings();
         _tray?.UpdateHotkeyDescription(_settings.Hotkey.Describe());
+        // If they just switched to (or reconfigured) Local, re-warm. Idempotent —
+        // Ollama no-ops when the model is already resident.
+        WarmLocalCleanupIfNeeded();
         Log.Write("Config reloaded");
+    }
+
+    private void WarmLocalCleanupIfNeeded()
+    {
+        if (_settings.CleanupEnabled &&
+            string.Equals(_settings.CleanupEngine, "Local", StringComparison.OrdinalIgnoreCase))
+        {
+            _ = LocalCleanupProvider.WarmAsync(_settings);
+        }
     }
 
     public void Dispose()
     {
+        // Free the pinned cleanup model so games / other GPU apps get the VRAM back.
+        if (_settings is not null &&
+            string.Equals(_settings.CleanupEngine, "Local", StringComparison.OrdinalIgnoreCase))
+        {
+            try { LocalCleanupProvider.UnloadAsync(_settings).Wait(TimeSpan.FromSeconds(3)); }
+            catch { /* exiting anyway */ }
+        }
+
         _hook?.Dispose();
         _screenshot?.Dispose();
         _display?.Dispose();

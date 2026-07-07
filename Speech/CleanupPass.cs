@@ -1,14 +1,13 @@
 using System.Text.RegularExpressions;
-using Anthropic;
-using Anthropic.Models.Messages;
 
 namespace PatchyFlow;
 
 /// <summary>
-/// Optional Claude Haiku correction pass. Delete-only by design: it removes
-/// filler and the abandoned half of self-corrections, never rephrases.
-/// A similarity guard rejects any output that drifts from what was said,
-/// and every failure path falls back to the raw transcript.
+/// Optional delete-only correction pass. Removes filler and the abandoned half of
+/// self-corrections, never rephrases. Engine-agnostic: the Anthropic and Local
+/// backends are dumb text generators; the system prompt, similarity guard, dash
+/// stripping, cancellation, and stats all live here and run identically for both.
+/// Every failure path falls back to the raw transcript.
 /// </summary>
 public static class CleanupPass
 {
@@ -34,68 +33,99 @@ public static class CleanupPass
         "punctuation and capitalization, and add whitespace or list structure. If it needs nothing, " +
         "return it unchanged. Output only the cleaned text — no commentary, no quotes.";
 
-    private static AnthropicClient? _client;
-    private static string _clientKey = "";
+    // A deliberately smaller job for the local engine. Small models drift when asked
+    // to exercise judgment (collapsing self-corrections, inferring questions, "fixing"
+    // grammar), so we take the judgment away and ask only for the safe, mechanical part.
+    // Haiku gets the full SystemPrompt above; local is the offline fallback, scoped to
+    // what an 8B can do without putting words in your mouth.
+    private const string LocalSystemPrompt =
+        "You remove speech disfluencies from a dictated transcript. Do the MINIMUM.\n" +
+        "ONLY remove, and only when clearly used as filler:\n" +
+        "- um, uh, er, ah, hmm.\n" +
+        "- 'you know', 'like', 'I mean', 'sort of', 'kind of' when they carry no meaning.\n" +
+        "- an immediately repeated (stuttered) word or phrase — keep one copy.\n" +
+        "Then fix capitalization and add sentence-ending punctuation where a sentence clearly ends.\n" +
+        "NEVER do anything else. Specifically:\n" +
+        "- Never add, delete, reorder, or substitute any real (non-filler) word — not even to fix " +
+        "grammar, spelling, or an apparent transcription error. If a word looks wrong, LEAVE IT.\n" +
+        "- Never rewrite a self-correction; leave what was said exactly as said.\n" +
+        "- Never make a list. Never use em dashes or en dashes.\n" +
+        "When in doubt, change nothing. Output only the cleaned text — no commentary, no quotes.";
+
+    private static readonly AnthropicCleanupProvider AnthropicProvider = new();
+    private static readonly LocalCleanupProvider LocalProvider = new();
+
+    private static bool IsLocal(AppSettings s) =>
+        string.Equals(s.CleanupEngine, "Local", StringComparison.OrdinalIgnoreCase);
 
     public static async Task<string> ApplyAsync(string raw, ForegroundInfo? context, AppSettings settings,
         CancellationToken cancel = default)
     {
-        if (!settings.CleanupEnabled || string.IsNullOrWhiteSpace(settings.AnthropicApiKey))
+        if (!settings.CleanupEnabled)
             return raw;
         if (CountWords(raw) < 4)
-            return raw; // nothing worth an API call
+            return raw; // nothing worth a model call
+
+        bool local = IsLocal(settings);
+
+        // Per-engine readiness. Critically, the Local path must NOT be gated on an
+        // Anthropic key — an offline user won't have one, and that's the whole point.
+        if (local)
+        {
+            if (string.IsNullOrWhiteSpace(settings.LocalModel)) return raw;
+        }
+        else
+        {
+            if (string.IsNullOrWhiteSpace(settings.AnthropicApiKey)) return raw;
+        }
+
+        ICleanupProvider provider = local ? LocalProvider : AnthropicProvider;
+        int timeoutSec = local ? Math.Max(1, settings.LocalTimeoutSeconds) : 8;
 
         try
         {
-            if (_client == null || _clientKey != settings.AnthropicApiKey)
-            {
-                _client = new AnthropicClient { ApiKey = settings.AnthropicApiKey };
-                _clientKey = settings.AnthropicApiKey;
-            }
-
-            var system = SystemPrompt;
-            if (context != null && settings.ContextAwareness)
+            // Local gets the stripped-down prompt with no context hint — telling a small
+            // model to "resolve ambiguous words" is exactly the invitation to substitute
+            // that we're trying to avoid. Haiku gets the full prompt plus context.
+            var system = local ? LocalSystemPrompt : SystemPrompt;
+            if (!local && context != null && settings.ContextAwareness)
             {
                 system += $"\nThe user is dictating into: {context.Describe()}. " +
                           "Use this only to resolve ambiguous words; never change tone or content because of it.";
             }
 
-            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(8));
+            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(timeoutSec));
             using var cts = CancellationTokenSource.CreateLinkedTokenSource(timeout.Token, cancel);
             var sw = System.Diagnostics.Stopwatch.StartNew();
 
-            var response = await _client.Messages.Create(new MessageCreateParams
-            {
-                Model = settings.CleanupModel,
-                MaxTokens = 4096,
-                System = system,
-                Messages =
-                [
-                    new MessageParam { Role = "user", Content = raw },
-                ],
-            }, cts.Token);
+            var result = await provider.CompleteAsync(system, raw, settings, cts.Token);
 
-            Stats.RecordAiCall(response.Usage?.InputTokens ?? 0, response.Usage?.OutputTokens ?? 0);
+            // Count the call (with real token usage) before the guard, matching the
+            // original behavior: you "spent" the call even if the guard rejects it.
+            // Local tokens are non-billable so they never inflate the cost estimate.
+            Stats.RecordAiCall(result.InputTokens, result.OutputTokens, billable: !local);
 
-            var sb = new System.Text.StringBuilder();
-            foreach (var block in response.Content)
-                if (block.TryPickText(out var textBlock))
-                    sb.Append(textBlock.Text);
-            var cleaned = StripDashes(sb.ToString().Trim());
+            var cleaned = StripDashes(result.Text.Trim());
 
             if (!PassesGuard(raw, cleaned))
             {
-                Log.Write($"Cleanup guard rejected output ({raw.Length} -> {cleaned.Length} chars, {sw.ElapsedMilliseconds}ms); using raw");
+                Log.Write($"Cleanup guard rejected output ({settings.CleanupEngine}, {raw.Length} -> {cleaned.Length} chars, {sw.ElapsedMilliseconds}ms); using raw");
                 return raw;
             }
 
-            Log.Write($"Cleanup: {raw.Length} -> {cleaned.Length} chars in {sw.ElapsedMilliseconds}ms");
+            Log.Write($"Cleanup ({settings.CleanupEngine}): {raw.Length} -> {cleaned.Length} chars in {sw.ElapsedMilliseconds}ms");
             return cleaned;
+        }
+        catch (OperationCanceledException) when (cancel.IsCancellationRequested)
+        {
+            // User hit Escape — an abort, not a failure. Let FinishDictationAsync handle it
+            // (skip paste, play the cancel blip) and don't record an AI failure.
+            throw;
         }
         catch (Exception ex)
         {
             Stats.RecordAiFailure();
-            Log.Write($"Cleanup failed (using raw transcript): {ex.Message}");
+            Log.Write($"Cleanup failed ({settings.CleanupEngine}, using raw transcript): {ex.Message}");
             return raw;
         }
     }

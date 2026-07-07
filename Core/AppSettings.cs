@@ -96,10 +96,23 @@ public sealed class AppSettings
     /// <summary>Anthropic API key for the correction pass. Empty = pass disabled, raw transcripts.</summary>
     public string AnthropicApiKey { get; set; } = "";
 
-    /// <summary>Delete-only AI cleanup of transcripts (needs AnthropicApiKey).</summary>
+    /// <summary>Delete-only AI cleanup of transcripts.</summary>
     public bool CleanupEnabled { get; set; } = true;
 
+    /// <summary>Which backend runs the cleanup pass: "Anthropic" (cloud) or "Local" (Ollama, fully offline).</summary>
+    public string CleanupEngine { get; set; } = "Anthropic";
+
+    /// <summary>Anthropic model for the cloud engine.</summary>
     public string CleanupModel { get; set; } = "claude-haiku-4-5";
+
+    /// <summary>Ollama base URL for the Local engine. Never leaves the machine.</summary>
+    public string LocalEndpoint { get; set; } = "http://localhost:11434";
+
+    /// <summary>Ollama model tag for the Local engine, e.g. "qwen3:8b". Must be pulled in Ollama.</summary>
+    public string LocalModel { get; set; } = "qwen3:8b";
+
+    /// <summary>Local cleanup timeout. Longer than the cloud path: a cold model load can be slow.</summary>
+    public int LocalTimeoutSeconds { get; set; } = 30;
 
     /// <summary>Feed the active app name + window title to transcription and cleanup.</summary>
     public bool ContextAwareness { get; set; } = true;

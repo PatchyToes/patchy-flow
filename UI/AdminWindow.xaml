@@ -57,6 +57,13 @@
             <Setter Property="Padding" Value="18,7" />
             <Setter Property="FontFamily" Value="Segoe UI" />
         </Style>
+        <Style TargetType="ComboBox">
+            <Setter Property="Background" Value="#2B2B2B" />
+            <Setter Property="Foreground" Value="#1B1B1B" />
+            <Setter Property="BorderBrush" Value="#3D3D3D" />
+            <Setter Property="Padding" Value="6,4" />
+            <Setter Property="FontFamily" Value="Segoe UI" />
+        </Style>
     </Window.Resources>
 
     <Grid>
@@ -112,10 +119,19 @@
                                Text="Delete-only pass: removes filler and resolves self-corrections, never rephrases. Falls back to the raw transcript on any doubt." />
                     <CheckBox x:Name="CEnabled" Content="Enable AI cleanup" />
                     <CheckBox x:Name="CContext" Content="Use active app + window title as context" />
-                    <TextBlock Style="{StaticResource FieldLabel}" Text="Anthropic API key" />
+                    <TextBlock Style="{StaticResource FieldLabel}" Text="Engine" />
+                    <ComboBox x:Name="CEngine" Width="220" HorizontalAlignment="Left">
+                        <ComboBoxItem Content="Anthropic API" />
+                        <ComboBoxItem Content="Local (Ollama, offline)" />
+                    </ComboBox>
+                    <TextBlock Style="{StaticResource FieldLabel}" Text="Anthropic API key (Anthropic engine)" />
                     <TextBox x:Name="CApiKey" Width="420" HorizontalAlignment="Left" />
-                    <TextBlock Style="{StaticResource FieldLabel}" Text="Model" />
+                    <TextBlock Style="{StaticResource FieldLabel}" Text="Anthropic model" />
                     <TextBox x:Name="CModel" Width="220" HorizontalAlignment="Left" />
+                    <TextBlock Style="{StaticResource FieldLabel}" Text="Local server URL (Local engine)" />
+                    <TextBox x:Name="CLocalEndpoint" Width="300" HorizontalAlignment="Left" />
+                    <TextBlock Style="{StaticResource FieldLabel}" Text="Local model — must be pulled in Ollama (e.g. qwen3:8b)" />
+                    <TextBox x:Name="CLocalModel" Width="220" HorizontalAlignment="Left" />
                 </StackPanel>
 
                 <StackPanel x:Name="ScreenshotSection" Visibility="Collapsed">

@@ -87,6 +87,25 @@ public partial class App : Application
                 samples[i] = BitConverter.ToInt16(bytes, i * 2) / 32768f;
 
             var settings = AppSettings.Load();
+
+            // A/B overrides so you can diff engines/models on the same wav without
+            // editing settings.json:
+            //   --transcribe clip.wav --engine local --model qwen3:8b
+            //   --transcribe clip.wav --engine anthropic --model claude-haiku-4-5
+            var args = Environment.GetCommandLineArgs();
+            int ei = Array.IndexOf(args, "--engine");
+            if (ei >= 0 && ei + 1 < args.Length) settings.CleanupEngine = args[ei + 1];
+            int mdi = Array.IndexOf(args, "--model");
+            if (mdi >= 0 && mdi + 1 < args.Length)
+            {
+                if (string.Equals(settings.CleanupEngine, "Local", StringComparison.OrdinalIgnoreCase))
+                    settings.LocalModel = args[mdi + 1];
+                else
+                    settings.CleanupModel = args[mdi + 1];
+            }
+            settings.CleanupEnabled = true; // force the pass on for the harness
+            bool local = string.Equals(settings.CleanupEngine, "Local", StringComparison.OrdinalIgnoreCase);
+
             var dictionary = new UserDictionary();
             dictionary.Load();
 
@@ -99,7 +118,9 @@ public partial class App : Application
             var cleaned = await CleanupPass.ApplyAsync(text, null, settings);
 
             File.WriteAllText(wavPath + ".txt",
-                $"runtime={transcriber.LoadedRuntime}\nraw: {text}\ncleaned: {cleaned}");
+                $"runtime={transcriber.LoadedRuntime}\n" +
+                $"engine={settings.CleanupEngine} model={(local ? settings.LocalModel : settings.CleanupModel)}\n" +
+                $"raw: {text}\ncleaned: {cleaned}");
         }
         catch (Exception ex)
         {

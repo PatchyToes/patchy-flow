@@ -12,10 +12,16 @@ public sealed class Stats
     public long Words { get; set; }
     public int AiCalls { get; set; }
     public int AiFailures { get; set; }
+
+    // Billable (Anthropic) tokens only — these feed the cost estimate.
     public long InputTokens { get; set; }
     public long OutputTokens { get; set; }
 
-    // Haiku 4.5 list price: $1 / 1M input, $5 / 1M output.
+    // Local (Ollama) tokens — tracked for throughput visibility, never priced.
+    public long LocalInputTokens { get; set; }
+    public long LocalOutputTokens { get; set; }
+
+    // Haiku 4.5 list price: $1 / 1M input, $5 / 1M output. Local inference is free.
     public double EstimatedCostUsd => InputTokens / 1_000_000.0 * 1.0 + OutputTokens / 1_000_000.0 * 5.0;
 
     private static readonly object Gate = new();
@@ -52,8 +58,13 @@ public sealed class Stats
     public static void RecordDictation(int words) =>
         Mutate(s => { s.Dictations++; s.Words += words; });
 
-    public static void RecordAiCall(long inputTokens, long outputTokens) =>
-        Mutate(s => { s.AiCalls++; s.InputTokens += inputTokens; s.OutputTokens += outputTokens; });
+    public static void RecordAiCall(long inputTokens, long outputTokens, bool billable = true) =>
+        Mutate(s =>
+        {
+            s.AiCalls++;
+            if (billable) { s.InputTokens += inputTokens; s.OutputTokens += outputTokens; }
+            else { s.LocalInputTokens += inputTokens; s.LocalOutputTokens += outputTokens; }
+        });
 
     public static void RecordAiFailure() =>
         Mutate(s => { s.AiCalls++; s.AiFailures++; });
