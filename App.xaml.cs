@@ -67,8 +67,10 @@ public partial class App : Application
             await transcriber.TranscribeAsync(samples, settings.Language, dictionary.BuildWhisperPrompt());
             var text = await transcriber.TranscribeAsync(samples, settings.Language, dictionary.BuildWhisperPrompt());
             text = dictionary.Apply(text);
+            var cleaned = await CleanupPass.ApplyAsync(text, null, settings);
 
-            File.WriteAllText(wavPath + ".txt", $"runtime={transcriber.LoadedRuntime}\n{text}");
+            File.WriteAllText(wavPath + ".txt",
+                $"runtime={transcriber.LoadedRuntime}\nraw: {text}\ncleaned: {cleaned}");
         }
         catch (Exception ex)
         {

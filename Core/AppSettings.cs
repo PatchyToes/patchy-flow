@@ -55,6 +55,17 @@ public sealed class AppSettings
     /// <summary>Safety stop for a runaway recording, in seconds.</summary>
     public int MaxRecordingSeconds { get; set; } = 300;
 
+    /// <summary>Anthropic API key for the correction pass. Empty = pass disabled, raw transcripts.</summary>
+    public string AnthropicApiKey { get; set; } = "";
+
+    /// <summary>Delete-only AI cleanup of transcripts (needs AnthropicApiKey).</summary>
+    public bool CleanupEnabled { get; set; } = true;
+
+    public string CleanupModel { get; set; } = "claude-haiku-4-5";
+
+    /// <summary>Feed the active app name + window title to transcription and cleanup.</summary>
+    public bool ContextAwareness { get; set; } = true;
+
     private static readonly JsonSerializerOptions JsonOpts = new()
     {
         WriteIndented = true,

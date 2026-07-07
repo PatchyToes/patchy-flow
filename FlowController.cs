@@ -23,6 +23,7 @@ public sealed class FlowController : IDisposable
 
     private State _state = State.Idle;
     private DateTime _recordingStartedAt;
+    private ForegroundInfo? _dictationTarget;
 
     public void Start()
     {
@@ -104,6 +105,8 @@ public sealed class FlowController : IDisposable
             return;
         }
 
+        _dictationTarget = _settings.ContextAwareness ? ForegroundContext.Capture() : null;
+
         try
         {
             _recorder = new AudioRecorder();
@@ -161,8 +164,13 @@ public sealed class FlowController : IDisposable
 
             _overlay?.ShowProcessing();
 
-            var text = await _transcriber.TranscribeAsync(samples, _settings.Language, _dictionary.BuildWhisperPrompt());
+            var whisperPrompt = _dictionary.BuildWhisperPrompt();
+            if (_dictationTarget != null)
+                whisperPrompt = $"{whisperPrompt} Context: {_dictationTarget.Describe()}.".Trim();
+
+            var text = await _transcriber.TranscribeAsync(samples, _settings.Language, whisperPrompt);
             text = _dictionary.Apply(text);
+            text = await CleanupPass.ApplyAsync(text, _dictationTarget, _settings);
 
             _overlay?.HideOverlay();
 
