@@ -7,6 +7,7 @@ namespace PatchyFlow;
 public partial class App : Application
 {
     private static Mutex? _singleInstanceMutex;
+    private static EventWaitHandle? _showAdmin;
     private FlowController? _controller;
 
     protected override void OnStartup(StartupEventArgs e)
@@ -29,12 +30,20 @@ public partial class App : Application
             RunOcrTest(cmdArgs[oi + 1]);
             return;
         }
+        int mi = Array.IndexOf(cmdArgs, "--makeicon");
+        if (mi >= 0 && mi + 1 < cmdArgs.Length)
+        {
+            IconFactory.WriteIco(cmdArgs[mi + 1]);
+            Shutdown();
+            return;
+        }
 
         _singleInstanceMutex = new Mutex(true, "PatchyFlow_SingleInstance", out bool isNew);
+        _showAdmin = new EventWaitHandle(false, EventResetMode.AutoReset, "PatchyFlow_ShowAdmin");
         if (!isNew)
         {
-            MessageBox.Show("PatchyFlow is already running (check the system tray).",
-                "PatchyFlow", MessageBoxButton.OK, MessageBoxImage.Information);
+            // relaunch = "show me the app": tell the running instance to open Settings
+            _showAdmin.Set();
             Shutdown();
             return;
         }
@@ -49,6 +58,18 @@ public partial class App : Application
 
         _controller = new FlowController();
         _controller.Start();
+
+        // wake-up listener: a second launch sets the event instead of starting
+        var listener = new Thread(() =>
+        {
+            while (true)
+            {
+                _showAdmin!.WaitOne();
+                Dispatcher.BeginInvoke(() => _controller?.OpenAdminWindow());
+            }
+        })
+        { IsBackground = true, Name = "ShowAdminListener" };
+        listener.Start();
     }
 
     private async void RunTranscribeTest(string wavPath)

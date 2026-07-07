@@ -46,7 +46,7 @@ public sealed class TrayIcon : IDisposable
 
         _icon = new NotifyIcon
         {
-            Icon = DrawIcon(),
+            Icon = LoadAppIcon(),
             Text = $"PatchyFlow — hold {hotkeyDescription} to talk",
             Visible = true,
             ContextMenuStrip = menu,
@@ -97,6 +97,20 @@ public sealed class TrayIcon : IDisposable
         {
             Log.Write($"Autostart toggle failed: {ex.Message}");
         }
+    }
+
+    private static Icon LoadAppIcon()
+    {
+        try
+        {
+            var path = Path.Combine(AppContext.BaseDirectory, "Assets", "icon.ico");
+            if (File.Exists(path)) return new Icon(path);
+        }
+        catch (Exception ex)
+        {
+            Log.Write($"App icon load failed, using drawn fallback: {ex.Message}");
+        }
+        return DrawIcon();
     }
 
     private static Icon DrawIcon()

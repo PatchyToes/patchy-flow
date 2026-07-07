@@ -216,7 +216,7 @@ public sealed class FlowController : IDisposable
 
     private AdminWindow? _admin;
 
-    private void OpenAdminWindow()
+    public void OpenAdminWindow()
     {
         if (_admin is { IsVisible: true })
         {

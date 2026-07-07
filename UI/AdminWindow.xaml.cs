@@ -15,6 +15,13 @@ public partial class AdminWindow : Window
     {
         InitializeComponent();
         _onSaved = onSaved;
+        try
+        {
+            var ico = Path.Combine(AppContext.BaseDirectory, "Assets", "icon.ico");
+            if (File.Exists(ico))
+                Icon = System.Windows.Media.Imaging.BitmapFrame.Create(new Uri(ico));
+        }
+        catch { /* window works fine without an icon */ }
         LoadFromSettings(AppSettings.Load());
     }
 

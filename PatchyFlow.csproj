@@ -15,7 +15,12 @@
     <RootNamespace>PatchyFlow</RootNamespace>
     <Version>0.1.0</Version>
     <SelfContained>false</SelfContained>
+    <ApplicationIcon>Assets\icon.ico</ApplicationIcon>
   </PropertyGroup>
+
+  <ItemGroup>
+    <Content Include="Assets\icon.ico" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
 
   <ItemGroup>
     <PackageReference Include="Anthropic" Version="12.35.1" />
