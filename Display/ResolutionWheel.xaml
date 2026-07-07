@@ -1,0 +1,26 @@
+<Window x:Class="PatchyFlow.ResolutionWheel"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Resolution"
+        Width="470" Height="470"
+        WindowStyle="None"
+        AllowsTransparency="True"
+        Background="Transparent"
+        Topmost="True"
+        ShowInTaskbar="False"
+        ShowActivated="False"
+        ResizeMode="NoResize">
+    <Canvas x:Name="Root" Width="470" Height="470">
+        <Ellipse x:Name="CenterDisc" Width="150" Height="150"
+                 Canvas.Left="160" Canvas.Top="160"
+                 Fill="#F0141414" Stroke="#33FFFFFF" StrokeThickness="1" />
+        <StackPanel x:Name="CenterText" Width="150" Canvas.Left="160" Canvas.Top="205">
+            <TextBlock x:Name="CenterLabel" Text="" Foreground="#EDEDED"
+                       FontFamily="Segoe UI" FontSize="17" FontWeight="SemiBold"
+                       HorizontalAlignment="Center" />
+            <TextBlock x:Name="CenterHint" Text="release to apply" Foreground="#8AFFFFFF"
+                       FontFamily="Segoe UI" FontSize="11"
+                       HorizontalAlignment="Center" Margin="0,3,0,0" />
+        </StackPanel>
+    </Canvas>
+</Window>

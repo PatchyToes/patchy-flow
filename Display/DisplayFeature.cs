@@ -13,11 +13,64 @@ public sealed class DisplayFeature : IDisposable
     private readonly Func<AppSettings> _settings;
     private readonly Action<string, string> _notify;
 
+    private ResolutionWheel? _wheel;
+
     public DisplayFeature(Func<AppSettings> settings, Action<string, string> notify)
     {
         _settings = settings;
         _notify = notify;
-        _hotkey.Pressed += CycleResolution;
+        _hotkey.Pressed += OpenWheel;
+    }
+
+    /// <summary>Esports-style radial picker: hold the hotkey, aim, release to apply.</summary>
+    private void OpenWheel()
+    {
+        if (_wheel is { IsVisible: true }) return;
+        try
+        {
+            var s = _settings().Display;
+            var current = GetCurrentMode();
+            if (current == null)
+            {
+                _notify("PatchyFlow", "Couldn't read the current display mode.");
+                return;
+            }
+
+            var items = s.Presets
+                .Select(ParsePreset)
+                .Where(p => p != null)
+                .Select(p => FindSupportedMode(p!))
+                .Where(m => m != null)
+                .Select(m => m!)
+                .DistinctBy(m => (m.Width, m.Height))
+                .ToList();
+            if (items.Count == 0)
+            {
+                _notify("PatchyFlow", "No supported display presets (Settings → Display).");
+                return;
+            }
+
+            int targetVk = Enum.TryParse<System.Windows.Forms.Keys>(s.Hotkey.Key, true, out var k) ? (int)k : 0;
+
+            _wheel = new ResolutionWheel(items, current, targetVk, mode =>
+            {
+                if (mode.Width == current.Width && mode.Height == current.Height) return;
+                if (Apply(mode))
+                {
+                    Log.Write($"Display: {current.Width}x{current.Height} -> {mode.Width}x{mode.Height}@{mode.Hz}");
+                    _notify("Resolution changed", $"{mode.Width}x{mode.Height} @ {mode.Hz}Hz");
+                }
+                else
+                {
+                    _notify("PatchyFlow", $"Couldn't switch to {mode.Width}x{mode.Height}.");
+                }
+            });
+            _wheel.Show();
+        }
+        catch (Exception ex)
+        {
+            Log.Write($"Resolution wheel failed: {ex}");
+        }
     }
 
     public void ApplySettings()
@@ -35,58 +88,6 @@ public sealed class DisplayFeature : IDisposable
     }
 
     internal sealed record Mode(int Width, int Height, int Hz);
-
-    private void CycleResolution()
-    {
-        try
-        {
-            var presets = _settings().Display.Presets
-                .Select(ParsePreset)
-                .Where(p => p != null)
-                .Select(p => p!)
-                .ToList();
-            if (presets.Count == 0)
-            {
-                _notify("PatchyFlow", "No display presets configured (Settings → Display).");
-                return;
-            }
-
-            var current = GetCurrentMode();
-            if (current == null)
-            {
-                _notify("PatchyFlow", "Couldn't read the current display mode.");
-                return;
-            }
-
-            // find where we are in the cycle; unknown resolution = jump to first preset
-            int index = presets.FindIndex(p => p.Width == current.Width && p.Height == current.Height);
-            for (int attempt = 1; attempt <= presets.Count; attempt++)
-            {
-                var next = presets[(index + attempt) % presets.Count];
-                if (next.Width == current.Width && next.Height == current.Height) continue;
-
-                var supported = FindSupportedMode(next);
-                if (supported == null)
-                {
-                    Log.Write($"Display preset {next.Width}x{next.Height}@{next.Hz} not supported by this monitor");
-                    continue;
-                }
-
-                if (Apply(supported))
-                {
-                    Log.Write($"Display: {current.Width}x{current.Height} -> {supported.Width}x{supported.Height}@{supported.Hz}");
-                    _notify("Resolution changed", $"{supported.Width}x{supported.Height} @ {supported.Hz}Hz");
-                    return;
-                }
-            }
-            _notify("PatchyFlow", "No other preset applied (all unsupported or already active).");
-        }
-        catch (Exception ex)
-        {
-            Log.Write($"Display cycle failed: {ex}");
-            _notify("PatchyFlow — display change failed", "Check the log (tray menu).");
-        }
-    }
 
     internal static Mode? ParsePreset(string line)
     {
