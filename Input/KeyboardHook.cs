@@ -58,6 +58,10 @@ public sealed class KeyboardHook : IDisposable
     private readonly HashSet<uint> _down = new();
     private bool _engaged;
     private bool _suppressTargetUntilUp;
+    // true when we swallowed the target key's down event; only then may we swallow its up.
+    // If the down leaked to the OS (chord pressed in the other order), swallowing the up
+    // would leave Windows thinking the key (e.g. LWin) is held forever.
+    private bool _swallowedTargetDown;
 
     public KeyboardHook(HotkeyConfig config)
     {
@@ -132,6 +136,7 @@ public sealed class KeyboardHook : IDisposable
                 if (ModsSatisfied())
                 {
                     _engaged = true;
+                    _swallowedTargetDown = true;
                     ChordDown?.Invoke();
                     return (IntPtr)1;
                 }
@@ -139,10 +144,11 @@ public sealed class KeyboardHook : IDisposable
             else if (!_engaged && !_suppressTargetUntilUp
                      && IsRequiredModVk(vk) && _down.Contains(_targetVk) && ModsSatisfied())
             {
-                // chord pressed in the other order (target key first, modifier second)
+                // chord pressed in the other order (target key first, modifier second);
+                // the target key's down already reached the OS, so its up must too
                 _engaged = true;
+                _swallowedTargetDown = false;
                 ChordDown?.Invoke();
-                // let the modifier through; the target key already leaked, nothing to do about it
             }
             else if (_engaged && vk == VK_ESCAPE)
             {
@@ -160,12 +166,12 @@ public sealed class KeyboardHook : IDisposable
                 {
                     _engaged = false;
                     ChordUp?.Invoke();
-                    return (IntPtr)1;
+                    if (_swallowedTargetDown) return (IntPtr)1;
                 }
-                if (_suppressTargetUntilUp)
+                else if (_suppressTargetUntilUp)
                 {
                     _suppressTargetUntilUp = false;
-                    return (IntPtr)1;
+                    if (_swallowedTargetDown) return (IntPtr)1;
                 }
             }
             else if (_engaged && IsRequiredModVk(vk) && !ModsSatisfied())

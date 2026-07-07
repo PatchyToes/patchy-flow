@@ -78,6 +78,12 @@ public sealed class FlowController : IDisposable
             }
 
             await _transcriber.InitializeAsync(ModelDownloader.ModelPath(_settings.Model));
+
+            // warm-up on half a second of silence so the first real dictation
+            // doesn't pay the GPU pipeline-compile cost
+            try { await _transcriber.TranscribeAsync(new float[8000], _settings.Language, null); }
+            catch (Exception ex) { Log.Write($"Warm-up inference failed (non-fatal): {ex.Message}"); }
+
             _tray?.Balloon("PatchyFlow ready",
                 $"Hold {_settings.Hotkey.Describe()} and talk. Runtime: {_transcriber.LoadedRuntime}");
         }

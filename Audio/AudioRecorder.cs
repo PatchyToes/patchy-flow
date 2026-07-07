@@ -59,7 +59,8 @@ public sealed class AudioRecorder : IDisposable
 
         Log.Write($"Recording from: {device.FriendlyName}");
 
-        _capture = new WasapiCapture(device);
+        // 30ms buffers so the overlay waveform updates ~33x/sec instead of 10
+        _capture = new WasapiCapture(device, true, 30);
         var wf = _capture.WaveFormat;
         _srcRate = wf.SampleRate;
         _srcChannels = wf.Channels;
