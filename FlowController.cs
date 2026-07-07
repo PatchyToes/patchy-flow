@@ -27,6 +27,7 @@ public sealed class FlowController : IDisposable
     private State _state = State.Idle;
     private DateTime _recordingStartedAt;
     private ForegroundInfo? _dictationTarget;
+    private CancellationTokenSource? _processingCts;
 
     public void Start()
     {
@@ -46,6 +47,14 @@ public sealed class FlowController : IDisposable
         _hook.ChordDown += () => Dispatch(OnChordDown);
         _hook.ChordUp += () => Dispatch(OnChordUp);
         _hook.Cancel += () => Dispatch(OnCancel);
+        // Escape during transcription/paste aborts it. Runs on the hook thread;
+        // return whether we consumed the key so it doesn't leak to the focused app.
+        _hook.EscapeWhileIdle = () =>
+        {
+            if (_state != State.Processing) return false;
+            _processingCts?.Cancel();
+            return true;
+        };
         _hook.Install();
 
         _screenshot = new ScreenshotFeature(() => _settings, (title, msg) => _tray?.Balloon(title, msg));
@@ -163,6 +172,8 @@ public sealed class FlowController : IDisposable
         _recorder = null;
         if (recorder == null) { _state = State.Idle; return; }
 
+        _processingCts = new CancellationTokenSource();
+        var ct = _processingCts.Token;
         try
         {
             var heldMs = (DateTime.UtcNow - _recordingStartedAt).TotalMilliseconds;
@@ -187,11 +198,19 @@ public sealed class FlowController : IDisposable
             // S…"). App/window context still reaches the cleanup pass, which won't parrot it.
             var whisperPrompt = _dictionary.BuildWhisperPrompt();
 
-            var text = await _transcriber.TranscribeAsync(samples, _settings.Language, whisperPrompt);
+            var text = await _transcriber.TranscribeAsync(samples, _settings.Language, whisperPrompt, ct);
             text = _dictionary.Apply(text);
-            text = await CleanupPass.ApplyAsync(text, _dictationTarget, _settings);
+            text = await CleanupPass.ApplyAsync(text, _dictationTarget, _settings, ct);
+            text = StripEmDashes(text); // never paste an em/en dash, whatever the source
 
             _overlay?.HideOverlay();
+
+            if (ct.IsCancellationRequested)
+            {
+                if (_settings.EnableSounds) SoundFx.PlayCancel();
+                Log.Write("Dictation aborted by Escape during processing");
+                return;
+            }
 
             if (!string.IsNullOrWhiteSpace(text))
             {
@@ -201,6 +220,12 @@ public sealed class FlowController : IDisposable
                 await TextInjector.PasteAsync(text, _settings.RestoreClipboard);
             }
         }
+        catch (OperationCanceledException)
+        {
+            _overlay?.HideOverlay();
+            if (_settings.EnableSounds) SoundFx.PlayCancel();
+            Log.Write("Dictation aborted by Escape during processing");
+        }
         catch (Exception ex)
         {
             Log.Write($"Dictation failed: {ex}");
@@ -209,9 +234,16 @@ public sealed class FlowController : IDisposable
         }
         finally
         {
+            _processingCts?.Dispose();
+            _processingCts = null;
             _state = State.Idle;
         }
     }
+
+    // Belt-and-suspenders: guarantees no em/en dash ever reaches the paste,
+    // even when cleanup is off or the guard fell back to the raw transcript.
+    private static string StripEmDashes(string text) =>
+        System.Text.RegularExpressions.Regex.Replace(text, @"\s*[—–]\s*", ", ");
 
     private void OnCancel()
     {

@@ -34,7 +34,8 @@ public sealed class Transcriber : IDisposable
         });
     }
 
-    public async Task<string> TranscribeAsync(float[] samples, string language, string? prompt)
+    public async Task<string> TranscribeAsync(float[] samples, string language, string? prompt,
+        CancellationToken cancel = default)
     {
         if (_factory == null) throw new InvalidOperationException("Model not loaded yet");
 
@@ -56,7 +57,7 @@ public sealed class Transcriber : IDisposable
         await using var processor = builder.Build();
 
         var sb = new StringBuilder();
-        await foreach (var segment in processor.ProcessAsync(samples))
+        await foreach (var segment in processor.ProcessAsync(samples, cancel))
             sb.Append(segment.Text);
 
         var text = CleanUp(sb.ToString(), prompt);

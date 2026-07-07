@@ -15,6 +15,13 @@ public sealed class KeyboardHook : IDisposable
     public event Action? ChordUp;
     public event Action? Cancel;
 
+    /// <summary>
+    /// Fired when Escape is pressed while NOT holding the chord (e.g. during
+    /// transcription/paste). Return true to also swallow the Escape so it
+    /// doesn't reach the foreground app. Return false to let it pass through.
+    /// </summary>
+    public Func<bool>? EscapeWhileIdle;
+
     private const int WH_KEYBOARD_LL = 13;
     private const int WM_KEYDOWN = 0x0100;
     private const int WM_KEYUP = 0x0101;
@@ -156,6 +163,12 @@ public sealed class KeyboardHook : IDisposable
                 _suppressTargetUntilUp = _down.Contains(_targetVk);
                 Cancel?.Invoke();
                 return (IntPtr)1;
+            }
+            else if (!_engaged && vk == VK_ESCAPE && EscapeWhileIdle != null)
+            {
+                // Escape during processing (chord already released) aborts the pipeline.
+                // Only swallow it if the controller actually acted on it.
+                if (EscapeWhileIdle.Invoke()) return (IntPtr)1;
             }
         }
         else if (isUp)
