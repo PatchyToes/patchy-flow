@@ -58,8 +58,9 @@ public sealed class TapHotkey : IDisposable
         _source.AddHook(WndProc);
 
         _registered = RegisterHotKey(_source.Handle, _id, mods, (uint)key);
-        if (!_registered)
-            Log.Write($"TapHotkey: RegisterHotKey failed for {config.Describe()} (combo already taken?)");
+        Log.Write(_registered
+            ? $"Hotkey registered: {config.Describe()}"
+            : $"Hotkey FAILED (already taken by another app): {config.Describe()}");
         return _registered;
     }
 
