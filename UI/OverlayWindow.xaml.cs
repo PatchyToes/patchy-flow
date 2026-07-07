@@ -18,14 +18,15 @@ namespace PatchyFlow;
 /// </summary>
 public partial class OverlayWindow : Window
 {
-    private const int BarCount = 28;
-    private const double BarWidth = 4;
-    private const double BarGap = 3;
-    private const double MaxBarHeight = 32;
-    private const double MinBarHeight = 4;
+    private const int BarCount = 12;
+    private const double BarWidth = 3;
+    private const double BarGap = 2;
+    private const double MaxBarHeight = 18;
+    private const double MinBarHeight = 2.5;
 
     private readonly Rectangle[] _bars = new Rectangle[BarCount];
     private readonly double[] _levels = new double[BarCount];
+    private readonly double[] _barPhase = new double[BarCount];
     private readonly DispatcherTimer _timer;
     private float _currentLevel;
     private double _phase;
@@ -68,6 +69,8 @@ public partial class OverlayWindow : Window
             System.Windows.Controls.Canvas.SetTop(bar, (BarsCanvas.Height - MinBarHeight) / 2);
             BarsCanvas.Children.Add(bar);
             _bars[i] = bar;
+            // fixed per-bar phase offsets so the in-place wobble looks organic, not synchronized
+            _barPhase[i] = i * 1.7;
         }
 
         _timer = new DispatcherTimer(DispatcherPriority.Render) { Interval = TimeSpan.FromMilliseconds(33) };
@@ -127,9 +130,16 @@ public partial class OverlayWindow : Window
     {
         if (_mode == Mode.Recording)
         {
-            // scroll left, append the newest level on the right
-            for (int i = 0; i < BarCount - 1; i++) _levels[i] = _levels[i + 1];
-            _levels[BarCount - 1] = _currentLevel;
+            // in-place spectrum: every bar reacts to the live level instantly,
+            // with a center-weighted bell and per-bar wobble so it reads as voice
+            _phase += 0.45;
+            for (int i = 0; i < BarCount; i++)
+            {
+                double bell = 0.35 + 0.65 * Math.Sin(Math.PI * (i + 0.5) / BarCount);
+                double wobble = 0.55 + 0.45 * Math.Sin(_phase + _barPhase[i]);
+                double target = Math.Min(1.0, _currentLevel * 1.6) * bell * wobble;
+                _levels[i] += (target - _levels[i]) * 0.6; // fast attack, minimal lag
+            }
         }
         else if (_mode == Mode.Processing)
         {
