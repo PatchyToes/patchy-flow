@@ -111,7 +111,7 @@ public sealed class FlowController : IDisposable
 
             // pre-load + pin the local cleanup model so the first dictation doesn't
             // cold-load it inside the cleanup timeout. WarmAsync never throws.
-            WarmLocalCleanupIfNeeded();
+            SyncLocalCleanupModel();
 
             _tray?.Balloon("PatchyFlow ready",
                 $"Hold {_settings.Hotkey.Describe()} and talk. Runtime: {_transcriber.LoadedRuntime}");
@@ -295,26 +295,38 @@ public sealed class FlowController : IDisposable
         _display?.ApplySettings();
         _repaste?.ApplySettings();
         _tray?.UpdateHotkeyDescription(_settings.Hotkey.Describe());
-        // If they just switched to (or reconfigured) Local, re-warm. Idempotent —
-        // Ollama no-ops when the model is already resident.
-        WarmLocalCleanupIfNeeded();
+        // Warm the local model if they switched to Local, or release it if they
+        // switched away — so choosing Haiku actually frees the VRAM again.
+        SyncLocalCleanupModel();
         Log.Write("Config reloaded");
     }
 
-    private void WarmLocalCleanupIfNeeded()
+    private bool _localWarmed;
+
+    private void SyncLocalCleanupModel()
     {
-        if (_settings.CleanupEnabled &&
-            string.Equals(_settings.CleanupEngine, "Local", StringComparison.OrdinalIgnoreCase))
+        bool local = _settings.CleanupEnabled &&
+            string.Equals(_settings.CleanupEngine, "Local", StringComparison.OrdinalIgnoreCase);
+
+        if (local)
         {
-            _ = LocalCleanupProvider.WarmAsync(_settings);
+            _localWarmed = true;
+            _ = LocalCleanupProvider.WarmAsync(_settings); // idempotent; never throws
+        }
+        else if (_localWarmed)
+        {
+            // Switched off Local: unpin the model so the GPU is free for other work.
+            _localWarmed = false;
+            _ = LocalCleanupProvider.UnloadAsync(_settings);
         }
     }
 
     public void Dispose()
     {
         // Free the pinned cleanup model so games / other GPU apps get the VRAM back.
-        if (_settings is not null &&
-            string.Equals(_settings.CleanupEngine, "Local", StringComparison.OrdinalIgnoreCase))
+        // Only if we actually warmed one this session (skips a needless Ollama ping
+        // on a pure-Haiku run, and avoids re-unloading after a switch-away already did).
+        if (_localWarmed && _settings is not null)
         {
             try { LocalCleanupProvider.UnloadAsync(_settings).Wait(TimeSpan.FromSeconds(3)); }
             catch { /* exiting anyway */ }
