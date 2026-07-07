@@ -32,6 +32,11 @@ public partial class OverlayWindow : Window
     private double _runningPeak = 0.08;
     private double _phase;
 
+    // Recording = white "I hear you". Processing = accent teal "I'm working" —
+    // a distinct color so the switch never reads as "it died and went quiet".
+    private readonly SolidColorBrush _recordBrush = new(Color.FromArgb(0xE6, 0xFF, 0xFF, 0xFF));
+    private readonly SolidColorBrush _processBrush = new(Color.FromArgb(0xFF, 0x4E, 0xC9, 0xB0));
+
     private enum Mode { Hidden, Recording, Processing }
     private Mode _mode = Mode.Hidden;
 
@@ -55,7 +60,6 @@ public partial class OverlayWindow : Window
         double totalWidth = BarCount * BarWidth + (BarCount - 1) * BarGap;
         BarsCanvas.Width = totalWidth;
 
-        var brush = new SolidColorBrush(Color.FromArgb(0xE6, 0xFF, 0xFF, 0xFF));
         for (int i = 0; i < BarCount; i++)
         {
             var bar = new Rectangle
@@ -64,7 +68,7 @@ public partial class OverlayWindow : Window
                 Height = MinBarHeight,
                 RadiusX = 2,
                 RadiusY = 2,
-                Fill = brush,
+                Fill = _recordBrush,
             };
             System.Windows.Controls.Canvas.SetLeft(bar, i * (BarWidth + BarGap));
             System.Windows.Controls.Canvas.SetTop(bar, (BarsCanvas.Height - MinBarHeight) / 2);
@@ -97,6 +101,7 @@ public partial class OverlayWindow : Window
         _mode = Mode.Recording;
         Array.Clear(_levels);
         _currentLevel = 0;
+        SetBarBrush(_recordBrush);
         StatusText.Visibility = Visibility.Collapsed;
         BarsCanvas.Visibility = Visibility.Visible;
         Pill.Opacity = 1;
@@ -109,6 +114,13 @@ public partial class OverlayWindow : Window
     {
         _mode = Mode.Processing;
         _phase = 0;
+        SetBarBrush(_processBrush);
+    }
+
+    private void SetBarBrush(System.Windows.Media.Brush brush)
+    {
+        for (int i = 0; i < BarCount; i++)
+            _bars[i].Fill = brush;
     }
 
     public void ShowStatus(string text)
@@ -150,10 +162,15 @@ public partial class OverlayWindow : Window
         }
         else if (_mode == Mode.Processing)
         {
-            // gentle traveling wave so "thinking" still looks alive
-            _phase += 0.25;
+            // A bright crest that sweeps across, briskly, at real amplitude — reads as
+            // "actively working," not a diminished echo of the recording bars. The prior
+            // version dropped to a near-flat ripple, which looked like the app had died.
+            _phase += 0.38;
             for (int i = 0; i < BarCount; i++)
-                _levels[i] = 0.12 + 0.10 * (1 + Math.Sin(_phase - i * 0.55));
+            {
+                double wave = (1 + Math.Sin(_phase - i * 0.6)) / 2; // 0..1 travelling
+                _levels[i] = 0.18 + 0.55 * wave * wave;             // peaky crest, ~0.18..0.73
+            }
         }
 
         for (int i = 0; i < BarCount; i++)
