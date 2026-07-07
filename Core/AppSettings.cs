@@ -39,8 +39,8 @@ public sealed class ScreenshotSettings
 public sealed class DisplaySettings
 {
     public bool Enabled { get; set; } = true;
-    // not R: Ctrl+Alt+R was already claimed by another app on Mike's machine
-    public HotkeyConfig Hotkey { get; set; } = new() { Ctrl = true, Alt = true, Key = "D" };
+    // single dead key: hold-aim-release with one finger. (Ctrl+Alt+R was taken, Ctrl+Alt+D was awkward.)
+    public HotkeyConfig Hotkey { get; set; } = new() { Key = "Scroll" };
 
     /// <summary>Resolutions to cycle through: "2560x1440" or "1920x1080@144". Unsupported ones are skipped.</summary>
     public List<string> Presets { get; set; } = new() { "3840x2160", "2560x1440", "1920x1080" };
