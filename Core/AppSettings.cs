@@ -39,7 +39,8 @@ public sealed class ScreenshotSettings
 public sealed class DisplaySettings
 {
     public bool Enabled { get; set; } = true;
-    public HotkeyConfig Hotkey { get; set; } = new() { Ctrl = true, Alt = true, Key = "R" };
+    // not R: Ctrl+Alt+R was already claimed by another app on Mike's machine
+    public HotkeyConfig Hotkey { get; set; } = new() { Ctrl = true, Alt = true, Key = "D" };
 
     /// <summary>Resolutions to cycle through: "2560x1440" or "1920x1080@144". Unsupported ones are skipped.</summary>
     public List<string> Presets { get; set; } = new() { "3840x2160", "2560x1440", "1920x1080" };
