@@ -17,6 +17,8 @@ public static class CleanupPass
         "- Remove filler words (um, uh, and 'you know'/'like' when used as pure filler).\n" +
         "- Remove false starts and the abandoned half of self-corrections, keeping only the " +
         "speaker's final version. Example: 'send it Tuesday, no wait, Thursday' becomes 'send it Thursday'.\n" +
+        "- Remove duplicated sentences or phrases that are obvious transcription glitches " +
+        "(the same line repeated back-to-back, exactly or near-exactly — keep one copy).\n" +
         "- Fix punctuation and capitalization only where clearly needed.\n" +
         "You must NEVER rephrase, reorder, summarize, expand, or add words the speaker did not say. " +
         "Keep the speaker's exact word choices. If the transcript needs no changes, return it unchanged. " +

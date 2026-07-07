@@ -21,6 +21,7 @@ public sealed class FlowController : IDisposable
     private OverlayWindow? _overlay;
     private ScreenshotFeature? _screenshot;
     private DisplayFeature? _display;
+    private RepasteFeature? _repaste;
     private DispatcherTimer? _maxDurationTimer;
 
     private State _state = State.Idle;
@@ -50,6 +51,9 @@ public sealed class FlowController : IDisposable
 
         _display = new DisplayFeature(() => _settings, (title, msg) => _tray?.Balloon(title, msg));
         _display.ApplySettings();
+
+        _repaste = new RepasteFeature(() => _settings, (title, msg) => _tray?.Balloon(title, msg));
+        _repaste.ApplySettings();
 
         _maxDurationTimer = new DispatcherTimer();
         _maxDurationTimer.Tick += (_, _) =>
@@ -186,6 +190,7 @@ public sealed class FlowController : IDisposable
 
             if (!string.IsNullOrWhiteSpace(text))
             {
+                HistoryStore.Append(text, _dictationTarget?.App ?? "", _settings.History.KeepLast);
                 if (_settings.AppendSpace) text += " ";
                 await TextInjector.PasteAsync(text, _settings.RestoreClipboard);
             }
@@ -234,6 +239,7 @@ public sealed class FlowController : IDisposable
         _hook?.Configure(_settings.Hotkey);
         _screenshot?.ApplySettings();
         _display?.ApplySettings();
+        _repaste?.ApplySettings();
         _tray?.UpdateHotkeyDescription(_settings.Hotkey.Describe());
         Log.Write("Config reloaded");
     }
@@ -243,6 +249,7 @@ public sealed class FlowController : IDisposable
         _hook?.Dispose();
         _screenshot?.Dispose();
         _display?.Dispose();
+        _repaste?.Dispose();
         _recorder?.Dispose();
         _transcriber.Dispose();
         _tray?.Dispose();

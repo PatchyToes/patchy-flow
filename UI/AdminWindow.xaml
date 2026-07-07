@@ -78,6 +78,7 @@
             <ListBoxItem Content="AI Cleanup" Padding="14,10" />
             <ListBoxItem Content="Screenshot" Padding="14,10" />
             <ListBoxItem Content="Display" Padding="14,10" />
+            <ListBoxItem Content="History" Padding="14,10" />
         </ListBox>
 
         <ScrollViewer Grid.Column="1" Grid.Row="0" Padding="20,16" VerticalScrollBarVisibility="Auto">
@@ -139,6 +140,27 @@
                     <TextBlock Style="{StaticResource FieldLabel}" Text="Presets, one per line — 2560x1440 or 1920x1080@144" />
                     <TextBox x:Name="RPresets" Width="220" Height="90" HorizontalAlignment="Left"
                              AcceptsReturn="True" VerticalScrollBarVisibility="Auto" />
+                </StackPanel>
+
+                <StackPanel x:Name="HistorySection" Visibility="Collapsed">
+                    <TextBlock Style="{StaticResource SectionTitle}" Text="History" />
+                    <TextBlock Style="{StaticResource SectionHint}"
+                               Text="Every dictation is kept locally. Double-click a row to copy the full text." />
+                    <CheckBox x:Name="HRepasteEnabled" Content="Enable repaste-last hotkey" />
+                    <TextBlock Style="{StaticResource FieldLabel}" Text="Repaste hotkey (click, then press the combo)" />
+                    <local:HotkeyCaptureBox x:Name="HHotkey" Width="220" HorizontalAlignment="Left" />
+                    <TextBlock Style="{StaticResource FieldLabel}" Text="Recent dictations (newest first)" />
+                    <ListBox x:Name="HList" Height="200" Background="#2B2B2B" Foreground="#EDEDED"
+                             BorderBrush="#3D3D3D" FontFamily="Segoe UI" FontSize="12"
+                             HorizontalContentAlignment="Stretch"
+                             ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                             MouseDoubleClick="HistoryList_DoubleClick" />
+                    <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
+                        <Button Content="Copy selected" Click="HistoryCopy_Click" Margin="0,0,10,0" />
+                        <Button Content="Refresh" Click="HistoryRefresh_Click" />
+                        <TextBlock x:Name="HCopiedNote" Text="Copied." Foreground="{StaticResource Accent}"
+                                   VerticalAlignment="Center" Margin="12,0,0,0" Visibility="Hidden" />
+                    </StackPanel>
                 </StackPanel>
             </Grid>
         </ScrollViewer>

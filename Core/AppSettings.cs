@@ -46,6 +46,17 @@ public sealed class DisplaySettings
     public List<string> Presets { get; set; } = new() { "3840x2160", "2560x1440", "1920x1080" };
 }
 
+public sealed class HistorySettings
+{
+    /// <summary>Hold-free hotkey that re-pastes the most recent dictation.</summary>
+    public bool RepasteEnabled { get; set; } = true;
+
+    /// <summary>Wispr Flow muscle memory: Alt+Shift+Z.</summary>
+    public HotkeyConfig RepasteHotkey { get; set; } = new() { Alt = true, Shift = true, Key = "Z" };
+
+    public int KeepLast { get; set; } = 500;
+}
+
 public sealed class AppSettings
 {
     /// <summary>Master switch for push-to-talk dictation.</summary>
@@ -94,6 +105,8 @@ public sealed class AppSettings
     public ScreenshotSettings Screenshot { get; set; } = new();
 
     public DisplaySettings Display { get; set; } = new();
+
+    public HistorySettings History { get; set; } = new();
 
     private static readonly JsonSerializerOptions JsonOpts = new()
     {

@@ -38,7 +38,11 @@ public sealed class Transcriber : IDisposable
     {
         if (_factory == null) throw new InvalidOperationException("Model not loaded yet");
 
-        var builder = _factory.CreateBuilder().WithThreads(Math.Max(2, Environment.ProcessorCount / 2));
+        var builder = _factory.CreateBuilder()
+            .WithThreads(Math.Max(2, Environment.ProcessorCount / 2))
+            // don't condition each 30s window on the previous one — that feedback
+            // loop is what makes Whisper repeat a line forever on long dictations
+            .WithNoContext();
 
         if (string.Equals(language, "auto", StringComparison.OrdinalIgnoreCase))
             builder = builder.WithLanguageDetection();
