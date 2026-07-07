@@ -31,6 +31,7 @@ public sealed class FlowController : IDisposable
     public void Start()
     {
         Paths.EnsureCreated();
+        Paths.MigrateFromLegacy();
         _settings = AppSettings.Load();
         _dictionary.Load();
 

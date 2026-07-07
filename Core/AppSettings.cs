@@ -5,12 +5,13 @@ namespace PatchyFlow;
 
 public sealed class HotkeyConfig
 {
-    // Default matches Mike's real Wispr Flow binding: hold Ctrl+Win.
-    public bool Ctrl { get; set; } = true;
+    // No modifier defaults to true — every hotkey must opt in to its modifiers
+    // explicitly, or they'd all inherit a phantom Ctrl.
+    public bool Ctrl { get; set; }
     public bool Shift { get; set; }
     public bool Alt { get; set; }
     public bool Win { get; set; }
-    public string Key { get; set; } = "LWin";
+    public string Key { get; set; } = "Space";
 
     public string Describe()
     {
@@ -62,7 +63,8 @@ public sealed class AppSettings
     /// <summary>Master switch for push-to-talk dictation.</summary>
     public bool DictationEnabled { get; set; } = true;
 
-    public HotkeyConfig Hotkey { get; set; } = new();
+    // Mike's real Wispr binding: hold Ctrl+Win.
+    public HotkeyConfig Hotkey { get; set; } = new() { Ctrl = true, Key = "LWin" };
 
     /// <summary>"en", "auto", or any whisper language code.</summary>
     public string Language { get; set; } = "en";
