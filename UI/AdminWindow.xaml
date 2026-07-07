@@ -77,6 +77,7 @@
             <ListBoxItem Content="Dictation" Padding="14,10" />
             <ListBoxItem Content="AI Cleanup" Padding="14,10" />
             <ListBoxItem Content="Screenshot" Padding="14,10" />
+            <ListBoxItem Content="Display" Padding="14,10" />
         </ListBox>
 
         <ScrollViewer Grid.Column="1" Grid.Row="0" Padding="20,16" VerticalScrollBarVisibility="Auto">
@@ -126,6 +127,18 @@
                     <CheckBox x:Name="SSmart" Content="Smart describe with Claude vision (structure, tables, workflows — needs API key)" />
                     <TextBlock Style="{StaticResource FieldLabel}" Text="Also save PNGs to folder (empty = clipboard only)" />
                     <TextBox x:Name="SSaveTo" Width="420" HorizontalAlignment="Left" />
+                </StackPanel>
+
+                <StackPanel x:Name="DisplaySection" Visibility="Collapsed">
+                    <TextBlock Style="{StaticResource SectionTitle}" Text="Display" />
+                    <TextBlock Style="{StaticResource SectionHint}"
+                               Text="The hotkey cycles your primary monitor through these resolutions. Unsupported modes are skipped automatically." />
+                    <CheckBox x:Name="REnabled" Content="Enable resolution cycling" />
+                    <TextBlock Style="{StaticResource FieldLabel}" Text="Hotkey (click, then press the combo)" />
+                    <local:HotkeyCaptureBox x:Name="RHotkey" Width="220" HorizontalAlignment="Left" />
+                    <TextBlock Style="{StaticResource FieldLabel}" Text="Presets, one per line — 2560x1440 or 1920x1080@144" />
+                    <TextBox x:Name="RPresets" Width="220" Height="90" HorizontalAlignment="Left"
+                             AcceptsReturn="True" VerticalScrollBarVisibility="Auto" />
                 </StackPanel>
             </Grid>
         </ScrollViewer>

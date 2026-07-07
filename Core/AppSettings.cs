@@ -36,6 +36,15 @@ public sealed class ScreenshotSettings
     public string SavePngTo { get; set; } = "";
 }
 
+public sealed class DisplaySettings
+{
+    public bool Enabled { get; set; } = true;
+    public HotkeyConfig Hotkey { get; set; } = new() { Ctrl = true, Alt = true, Key = "R" };
+
+    /// <summary>Resolutions to cycle through: "2560x1440" or "1920x1080@144". Unsupported ones are skipped.</summary>
+    public List<string> Presets { get; set; } = new() { "3840x2160", "2560x1440", "1920x1080" };
+}
+
 public sealed class AppSettings
 {
     /// <summary>Master switch for push-to-talk dictation.</summary>
@@ -82,6 +91,8 @@ public sealed class AppSettings
     public bool ContextAwareness { get; set; } = true;
 
     public ScreenshotSettings Screenshot { get; set; } = new();
+
+    public DisplaySettings Display { get; set; } = new();
 
     private static readonly JsonSerializerOptions JsonOpts = new()
     {

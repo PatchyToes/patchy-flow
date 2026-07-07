@@ -39,6 +39,10 @@ public partial class AdminWindow : Window
         SHotkey.Load(s.Screenshot.Hotkey);
         SSmart.IsChecked = s.Screenshot.SmartDescribe;
         SSaveTo.Text = s.Screenshot.SavePngTo;
+
+        REnabled.IsChecked = s.Display.Enabled;
+        RHotkey.Load(s.Display.Hotkey);
+        RPresets.Text = string.Join(Environment.NewLine, s.Display.Presets);
     }
 
     private void Save_Click(object sender, RoutedEventArgs e)
@@ -65,6 +69,13 @@ public partial class AdminWindow : Window
         s.Screenshot.SmartDescribe = SSmart.IsChecked == true;
         s.Screenshot.SavePngTo = SSaveTo.Text.Trim();
 
+        s.Display.Enabled = REnabled.IsChecked == true;
+        s.Display.Hotkey = RHotkey.Value;
+        s.Display.Presets = RPresets.Text
+            .Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Where(line => DisplayFeature.ParsePreset(line) != null)
+            .ToList();
+
         s.Save();
         _onSaved();
 
@@ -79,7 +90,7 @@ public partial class AdminWindow : Window
     private void Nav_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
         if (GeneralSection == null) return; // fires during InitializeComponent
-        var sections = new[] { GeneralSection, DictationSection, CleanupSection, ScreenshotSection };
+        var sections = new[] { GeneralSection, DictationSection, CleanupSection, ScreenshotSection, DisplaySection };
         for (int i = 0; i < sections.Length; i++)
             sections[i].Visibility = Nav.SelectedIndex == i ? Visibility.Visible : Visibility.Collapsed;
     }

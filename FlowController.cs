@@ -20,6 +20,7 @@ public sealed class FlowController : IDisposable
     private TrayIcon? _tray;
     private OverlayWindow? _overlay;
     private ScreenshotFeature? _screenshot;
+    private DisplayFeature? _display;
     private DispatcherTimer? _maxDurationTimer;
 
     private State _state = State.Idle;
@@ -46,6 +47,9 @@ public sealed class FlowController : IDisposable
 
         _screenshot = new ScreenshotFeature(() => _settings, (title, msg) => _tray?.Balloon(title, msg));
         _screenshot.ApplySettings();
+
+        _display = new DisplayFeature(() => _settings, (title, msg) => _tray?.Balloon(title, msg));
+        _display.ApplySettings();
 
         _maxDurationTimer = new DispatcherTimer();
         _maxDurationTimer.Tick += (_, _) =>
@@ -229,6 +233,7 @@ public sealed class FlowController : IDisposable
         _dictionary.Load();
         _hook?.Configure(_settings.Hotkey);
         _screenshot?.ApplySettings();
+        _display?.ApplySettings();
         _tray?.UpdateHotkeyDescription(_settings.Hotkey.Describe());
         Log.Write("Config reloaded");
     }
@@ -237,6 +242,7 @@ public sealed class FlowController : IDisposable
     {
         _hook?.Dispose();
         _screenshot?.Dispose();
+        _display?.Dispose();
         _recorder?.Dispose();
         _transcriber.Dispose();
         _tray?.Dispose();
