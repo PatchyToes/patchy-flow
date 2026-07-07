@@ -202,11 +202,7 @@ public sealed class FlowController : IDisposable
             // S…"). App/window context still reaches the cleanup pass, which won't parrot it.
             var whisperPrompt = _dictionary.BuildWhisperPrompt();
 
-            var sw = System.Diagnostics.Stopwatch.StartNew();
             var text = await _transcriber.TranscribeAsync(samples, _settings.Language, whisperPrompt, ct);
-            // Per-stage timing: this line + CleanupPass's own log show the transcribe-vs-cleanup
-            // split, so we optimize on real numbers. Audio seconds included to see the realtime factor.
-            Log.Write($"Timing: transcribe {sw.ElapsedMilliseconds}ms for {samples.Length / (double)AudioRecorder.TargetRate:F1}s audio");
             text = _dictionary.Apply(text);
             text = await CleanupPass.ApplyAsync(text, _dictationTarget, _settings, ct);
             text = StripEmDashes(text); // never paste an em/en dash, whatever the source

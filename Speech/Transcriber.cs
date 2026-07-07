@@ -20,6 +20,8 @@ public sealed class Transcriber : IDisposable
     {
         await Task.Run(() =>
         {
+            EnsureCudaRuntimeDiscoverable();
+
             RuntimeOptions.RuntimeLibraryOrder = new List<RuntimeLibrary>
             {
                 RuntimeLibrary.Cuda,
@@ -32,6 +34,42 @@ public sealed class Transcriber : IDisposable
             LoadedRuntime = RuntimeOptions.LoadedLibrary?.ToString() ?? "unknown";
             Log.Write($"Whisper model loaded in {sw.ElapsedMilliseconds}ms, runtime: {LoadedRuntime}");
         });
+    }
+
+    /// <summary>
+    /// Whisper's CUDA backend (ggml-cuda-whisper.dll) is ~2x faster than Vulkan on an
+    /// NVIDIA card, but it needs the CUDA 12 runtime (cudart/cublas) on the DLL search
+    /// path — which we don't ship. Ollama does, though, and it's part of this app's local
+    /// stack. So if the runtime isn't already next to the exe, borrow Ollama's copy by
+    /// prepending its folder to PATH. If Ollama isn't installed, this no-ops and the
+    /// runtime order below falls back to Vulkan — identical to the old behavior, no risk.
+    /// </summary>
+    private static void EnsureCudaRuntimeDiscoverable()
+    {
+        try
+        {
+            if (File.Exists(Path.Combine(AppContext.BaseDirectory, "cudart64_12.dll")))
+                return; // already resolvable next to the exe
+
+            var ollamaRoot = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                "Programs", "Ollama");
+            if (!Directory.Exists(ollamaRoot)) return;
+
+            var cudart = Directory
+                .EnumerateFiles(ollamaRoot, "cudart64_12.dll", SearchOption.AllDirectories)
+                .FirstOrDefault();
+            if (cudart == null) return;
+
+            var cudaDir = Path.GetDirectoryName(cudart)!;
+            var path = Environment.GetEnvironmentVariable("PATH") ?? "";
+            Environment.SetEnvironmentVariable("PATH", cudaDir + Path.PathSeparator + path);
+            Log.Write($"CUDA runtime for Whisper sourced from: {cudaDir}");
+        }
+        catch (Exception ex)
+        {
+            Log.Write($"CUDA runtime probe failed (falling back to Vulkan): {ex.Message}");
+        }
     }
 
     public async Task<string> TranscribeAsync(float[] samples, string language, string? prompt,
