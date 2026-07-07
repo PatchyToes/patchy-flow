@@ -18,6 +18,7 @@ public sealed class TrayIcon : IDisposable
 
     public event Action? ReloadRequested;
     public event Action? SettingsRequested;
+    public event Action? HistoryRequested;
     public event Action? ExitRequested;
 
     public TrayIcon(string hotkeyDescription)
@@ -27,6 +28,7 @@ public sealed class TrayIcon : IDisposable
         var menu = new ContextMenuStrip();
         menu.Items.Add(_header);
         menu.Items.Add(new ToolStripSeparator());
+        menu.Items.Add("History && stats…", null, (_, _) => HistoryRequested?.Invoke());
         menu.Items.Add("Settings…", null, (_, _) => SettingsRequested?.Invoke());
         menu.Items.Add("Open dictionary", null, (_, _) => OpenInNotepad(Paths.DictionaryPath));
         menu.Items.Add("Reload settings && dictionary", null, (_, _) => ReloadRequested?.Invoke());

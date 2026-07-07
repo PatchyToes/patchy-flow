@@ -63,6 +63,8 @@ public static class CleanupPass
                 ],
             }, cts.Token);
 
+            Stats.RecordAiCall(response.Usage?.InputTokens ?? 0, response.Usage?.OutputTokens ?? 0);
+
             var sb = new System.Text.StringBuilder();
             foreach (var block in response.Content)
                 if (block.TryPickText(out var textBlock))
@@ -80,6 +82,7 @@ public static class CleanupPass
         }
         catch (Exception ex)
         {
+            Stats.RecordAiFailure();
             Log.Write($"Cleanup failed (using raw transcript): {ex.Message}");
             return raw;
         }

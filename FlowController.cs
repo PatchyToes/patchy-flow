@@ -39,6 +39,7 @@ public sealed class FlowController : IDisposable
         _tray = new TrayIcon(_settings.Hotkey.Describe());
         _tray.ReloadRequested += Reload;
         _tray.SettingsRequested += OpenAdminWindow;
+        _tray.HistoryRequested += OpenHistoryWindow;
         _tray.ExitRequested += () => Application.Current.Shutdown();
 
         _hook = new KeyboardHook(_settings.Hotkey);
@@ -152,6 +153,7 @@ public sealed class FlowController : IDisposable
         if (_state != State.Recording) return;
         _state = State.Processing;
         _maxDurationTimer?.Stop();
+        if (_settings.EnableSounds) SoundFx.PlayStop(); // descending blip = "off"
         _ = FinishDictationAsync();
     }
 
@@ -194,6 +196,7 @@ public sealed class FlowController : IDisposable
             if (!string.IsNullOrWhiteSpace(text))
             {
                 HistoryStore.Append(text, _dictationTarget?.App ?? "", _settings.History.KeepLast);
+                Stats.RecordDictation(text.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries).Length);
                 if (_settings.AppendSpace) text += " ";
                 await TextInjector.PasteAsync(text, _settings.RestoreClipboard);
             }
@@ -223,6 +226,7 @@ public sealed class FlowController : IDisposable
     }
 
     private AdminWindow? _admin;
+    private HistoryWindow? _historyWindow;
 
     public void OpenAdminWindow()
     {
@@ -233,6 +237,17 @@ public sealed class FlowController : IDisposable
         }
         _admin = new AdminWindow(Reload);
         _admin.Show();
+    }
+
+    public void OpenHistoryWindow()
+    {
+        if (_historyWindow is { IsVisible: true })
+        {
+            _historyWindow.Activate();
+            return;
+        }
+        _historyWindow = new HistoryWindow();
+        _historyWindow.Show();
     }
 
     public void Reload()

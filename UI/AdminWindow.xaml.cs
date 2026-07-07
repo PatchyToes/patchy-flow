@@ -53,42 +53,13 @@ public partial class AdminWindow : Window
 
         HRepasteEnabled.IsChecked = s.History.RepasteEnabled;
         HHotkey.Load(s.History.RepasteHotkey);
-        RefreshHistoryList();
     }
 
-    private List<HistoryEntry> _historyEntries = new();
-
-    private void RefreshHistoryList()
+    private void OpenHistory_Click(object sender, RoutedEventArgs e)
     {
-        _historyEntries = HistoryStore.ReadRecent(50);
-        HList.Items.Clear();
-        foreach (var e in _historyEntries)
-        {
-            var preview = e.Text.Length > 90 ? e.Text[..90] + "…" : e.Text;
-            HList.Items.Add($"{e.Ts:HH:mm}  [{e.App}]  {preview.Replace('\n', ' ')}");
-        }
-        if (_historyEntries.Count == 0)
-            HList.Items.Add("(no dictations yet)");
+        var win = new HistoryWindow { Owner = this };
+        win.Show();
     }
-
-    private void CopySelectedHistory()
-    {
-        int i = HList.SelectedIndex;
-        if (i < 0 || i >= _historyEntries.Count) return;
-        try
-        {
-            System.Windows.Clipboard.SetDataObject(_historyEntries[i].Text, true);
-            HCopiedNote.Visibility = Visibility.Visible;
-            var hide = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromSeconds(2) };
-            hide.Tick += (_, _) => { HCopiedNote.Visibility = Visibility.Hidden; hide.Stop(); };
-            hide.Start();
-        }
-        catch { /* clipboard briefly locked; user can retry */ }
-    }
-
-    private void HistoryList_DoubleClick(object sender, System.Windows.Input.MouseButtonEventArgs e) => CopySelectedHistory();
-    private void HistoryCopy_Click(object sender, RoutedEventArgs e) => CopySelectedHistory();
-    private void HistoryRefresh_Click(object sender, RoutedEventArgs e) => RefreshHistoryList();
 
     private void Save_Click(object sender, RoutedEventArgs e)
     {

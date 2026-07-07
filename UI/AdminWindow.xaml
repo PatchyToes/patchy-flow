@@ -149,18 +149,8 @@
                     <CheckBox x:Name="HRepasteEnabled" Content="Enable repaste-last hotkey" />
                     <TextBlock Style="{StaticResource FieldLabel}" Text="Repaste hotkey (click, then press the combo)" />
                     <local:HotkeyCaptureBox x:Name="HHotkey" Width="220" HorizontalAlignment="Left" />
-                    <TextBlock Style="{StaticResource FieldLabel}" Text="Recent dictations (newest first)" />
-                    <ListBox x:Name="HList" Height="200" Background="#2B2B2B" Foreground="#EDEDED"
-                             BorderBrush="#3D3D3D" FontFamily="Segoe UI" FontSize="12"
-                             HorizontalContentAlignment="Stretch"
-                             ScrollViewer.HorizontalScrollBarVisibility="Disabled"
-                             MouseDoubleClick="HistoryList_DoubleClick" />
-                    <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
-                        <Button Content="Copy selected" Click="HistoryCopy_Click" Margin="0,0,10,0" />
-                        <Button Content="Refresh" Click="HistoryRefresh_Click" />
-                        <TextBlock x:Name="HCopiedNote" Text="Copied." Foreground="{StaticResource Accent}"
-                                   VerticalAlignment="Center" Margin="12,0,0,0" Visibility="Hidden" />
-                    </StackPanel>
+                    <Button Content="Open history &amp; stats window" Click="OpenHistory_Click"
+                            HorizontalAlignment="Left" Margin="0,14,0,0" />
                 </StackPanel>
             </Grid>
         </ScrollViewer>
