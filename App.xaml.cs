@@ -13,12 +13,20 @@ public partial class App : Application
     {
         base.OnStartup(e);
 
-        // headless smoke test: PatchyFlow.exe --transcribe file.wav writes file.wav.txt and exits
+        // headless smoke tests:
+        //   PatchyFlow.exe --transcribe file.wav  -> file.wav.txt
+        //   PatchyFlow.exe --ocr file.png         -> file.png.txt
         var cmdArgs = Environment.GetCommandLineArgs();
         int ti = Array.IndexOf(cmdArgs, "--transcribe");
         if (ti >= 0 && ti + 1 < cmdArgs.Length)
         {
             RunTranscribeTest(cmdArgs[ti + 1]);
+            return;
+        }
+        int oi = Array.IndexOf(cmdArgs, "--ocr");
+        if (oi >= 0 && oi + 1 < cmdArgs.Length)
+        {
+            RunOcrTest(cmdArgs[oi + 1]);
             return;
         }
 
@@ -75,6 +83,21 @@ public partial class App : Application
         catch (Exception ex)
         {
             File.WriteAllText(wavPath + ".txt", $"ERROR: {ex}");
+        }
+        Shutdown();
+    }
+
+    private async void RunOcrTest(string pngPath)
+    {
+        try
+        {
+            using var bitmap = new System.Drawing.Bitmap(pngPath);
+            var text = await ScreenshotFeature.OcrAsync(bitmap);
+            File.WriteAllText(pngPath + ".txt", text);
+        }
+        catch (Exception ex)
+        {
+            File.WriteAllText(pngPath + ".txt", $"ERROR: {ex}");
         }
         Shutdown();
     }

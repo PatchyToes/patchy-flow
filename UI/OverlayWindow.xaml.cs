@@ -29,6 +29,7 @@ public partial class OverlayWindow : Window
     private readonly double[] _barPhase = new double[BarCount];
     private readonly DispatcherTimer _timer;
     private float _currentLevel;
+    private double _runningPeak = 0.08;
     private double _phase;
 
     private enum Mode { Hidden, Recording, Processing }
@@ -130,15 +131,21 @@ public partial class OverlayWindow : Window
     {
         if (_mode == Mode.Recording)
         {
-            // in-place spectrum: every bar reacts to the live level instantly,
-            // with a center-weighted bell and per-bar wobble so it reads as voice
-            _phase += 0.45;
+            // in-place spectrum, deliberately exaggerated: auto-gain against a
+            // decaying running peak so speech always drives bars through most of
+            // the range. Visibility over acoustic accuracy — this is a "yes, I
+            // hear you" light, not a meter.
+            _runningPeak = Math.Max(_runningPeak * 0.992, Math.Max(_currentLevel, 0.03));
+            double norm = Math.Clamp(_currentLevel / _runningPeak, 0, 1);
+            norm = Math.Pow(norm, 0.6); // loudness expansion: quiet speech still moves bars
+
+            _phase += 0.5;
             for (int i = 0; i < BarCount; i++)
             {
-                double bell = 0.35 + 0.65 * Math.Sin(Math.PI * (i + 0.5) / BarCount);
-                double wobble = 0.55 + 0.45 * Math.Sin(_phase + _barPhase[i]);
-                double target = Math.Min(1.0, _currentLevel * 1.6) * bell * wobble;
-                _levels[i] += (target - _levels[i]) * 0.6; // fast attack, minimal lag
+                double bell = 0.6 + 0.4 * Math.Sin(Math.PI * (i + 0.5) / BarCount);
+                double wobble = 0.78 + 0.22 * Math.Sin(_phase + _barPhase[i]);
+                double target = norm * bell * wobble;
+                _levels[i] += (target - _levels[i]) * 0.65; // fast attack, minimal lag
             }
         }
         else if (_mode == Mode.Processing)

@@ -19,6 +19,7 @@ public sealed class FlowController : IDisposable
     private KeyboardHook? _hook;
     private TrayIcon? _tray;
     private OverlayWindow? _overlay;
+    private ScreenshotFeature? _screenshot;
     private DispatcherTimer? _maxDurationTimer;
 
     private State _state = State.Idle;
@@ -34,6 +35,7 @@ public sealed class FlowController : IDisposable
         _overlay = new OverlayWindow();
         _tray = new TrayIcon(_settings.Hotkey.Describe());
         _tray.ReloadRequested += Reload;
+        _tray.SettingsRequested += OpenAdminWindow;
         _tray.ExitRequested += () => Application.Current.Shutdown();
 
         _hook = new KeyboardHook(_settings.Hotkey);
@@ -41,6 +43,9 @@ public sealed class FlowController : IDisposable
         _hook.ChordUp += () => Dispatch(OnChordUp);
         _hook.Cancel += () => Dispatch(OnCancel);
         _hook.Install();
+
+        _screenshot = new ScreenshotFeature(() => _settings, (title, msg) => _tray?.Balloon(title, msg));
+        _screenshot.ApplySettings();
 
         _maxDurationTimer = new DispatcherTimer();
         _maxDurationTimer.Tick += (_, _) =>
@@ -97,6 +102,7 @@ public sealed class FlowController : IDisposable
 
     private void OnChordDown()
     {
+        if (!_settings.DictationEnabled) return;
         if (_state != State.Idle) return;
 
         if (!_transcriber.IsReady)
@@ -204,19 +210,33 @@ public sealed class FlowController : IDisposable
         Log.Write("Dictation cancelled");
     }
 
-    private void Reload()
+    private AdminWindow? _admin;
+
+    private void OpenAdminWindow()
+    {
+        if (_admin is { IsVisible: true })
+        {
+            _admin.Activate();
+            return;
+        }
+        _admin = new AdminWindow(Reload);
+        _admin.Show();
+    }
+
+    public void Reload()
     {
         _settings = AppSettings.Load();
         _dictionary.Load();
         _hook?.Configure(_settings.Hotkey);
+        _screenshot?.ApplySettings();
         _tray?.UpdateHotkeyDescription(_settings.Hotkey.Describe());
-        _tray?.Balloon("PatchyFlow", "Settings and dictionary reloaded.");
         Log.Write("Config reloaded");
     }
 
     public void Dispose()
     {
         _hook?.Dispose();
+        _screenshot?.Dispose();
         _recorder?.Dispose();
         _transcriber.Dispose();
         _tray?.Dispose();

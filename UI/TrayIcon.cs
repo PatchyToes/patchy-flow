@@ -17,6 +17,7 @@ public sealed class TrayIcon : IDisposable
     private readonly ToolStripMenuItem _header;
 
     public event Action? ReloadRequested;
+    public event Action? SettingsRequested;
     public event Action? ExitRequested;
 
     public TrayIcon(string hotkeyDescription)
@@ -26,8 +27,8 @@ public sealed class TrayIcon : IDisposable
         var menu = new ContextMenuStrip();
         menu.Items.Add(_header);
         menu.Items.Add(new ToolStripSeparator());
+        menu.Items.Add("Settings…", null, (_, _) => SettingsRequested?.Invoke());
         menu.Items.Add("Open dictionary", null, (_, _) => OpenInNotepad(Paths.DictionaryPath));
-        menu.Items.Add("Open settings", null, (_, _) => OpenInNotepad(Paths.SettingsPath));
         menu.Items.Add("Reload settings && dictionary", null, (_, _) => ReloadRequested?.Invoke());
         menu.Items.Add("Open log", null, (_, _) => OpenInNotepad(Log.LogPath));
         menu.Items.Add(new ToolStripSeparator());
@@ -50,7 +51,7 @@ public sealed class TrayIcon : IDisposable
             Visible = true,
             ContextMenuStrip = menu,
         };
-        _icon.DoubleClick += (_, _) => OpenInNotepad(Paths.DictionaryPath);
+        _icon.DoubleClick += (_, _) => SettingsRequested?.Invoke();
     }
 
     public void UpdateHotkeyDescription(string hotkeyDescription)
@@ -75,13 +76,13 @@ public sealed class TrayIcon : IDisposable
         }
     }
 
-    private static bool IsAutoStartEnabled()
+    internal static bool IsAutoStartEnabled()
     {
         using var key = Registry.CurrentUser.OpenSubKey(RunKeyPath);
         return key?.GetValue(RunValueName) != null;
     }
 
-    private static void SetAutoStart(bool enabled)
+    internal static void SetAutoStart(bool enabled)
     {
         try
         {

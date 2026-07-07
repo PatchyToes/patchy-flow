@@ -24,8 +24,23 @@ public sealed class HotkeyConfig
     }
 }
 
+public sealed class ScreenshotSettings
+{
+    public bool Enabled { get; set; } = true;
+    public HotkeyConfig Hotkey { get; set; } = new() { Ctrl = true, Shift = true, Key = "S" };
+
+    /// <summary>Also run Claude vision to describe the snip; otherwise local OCR text only.</summary>
+    public bool SmartDescribe { get; set; }
+
+    /// <summary>Folder to also save the PNG into. Empty = clipboard only.</summary>
+    public string SavePngTo { get; set; } = "";
+}
+
 public sealed class AppSettings
 {
+    /// <summary>Master switch for push-to-talk dictation.</summary>
+    public bool DictationEnabled { get; set; } = true;
+
     public HotkeyConfig Hotkey { get; set; } = new();
 
     /// <summary>"en", "auto", or any whisper language code.</summary>
@@ -65,6 +80,8 @@ public sealed class AppSettings
 
     /// <summary>Feed the active app name + window title to transcription and cleanup.</summary>
     public bool ContextAwareness { get; set; } = true;
+
+    public ScreenshotSettings Screenshot { get; set; } = new();
 
     private static readonly JsonSerializerOptions JsonOpts = new()
     {

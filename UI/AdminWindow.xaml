@@ -1,0 +1,142 @@
+<Window x:Class="PatchyFlow.AdminWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:local="clr-namespace:PatchyFlow"
+        Title="PatchyFlow Settings"
+        Width="640" Height="520"
+        WindowStartupLocation="CenterScreen"
+        Background="#1B1B1B"
+        ResizeMode="CanResize">
+    <Window.Resources>
+        <SolidColorBrush x:Key="PanelBg" Color="#222222" />
+        <SolidColorBrush x:Key="Fg" Color="#EDEDED" />
+        <SolidColorBrush x:Key="FgDim" Color="#999999" />
+        <SolidColorBrush x:Key="Accent" Color="#4EC9B0" />
+
+        <Style TargetType="TextBlock">
+            <Setter Property="Foreground" Value="{StaticResource Fg}" />
+            <Setter Property="FontFamily" Value="Segoe UI" />
+        </Style>
+        <Style x:Key="SectionTitle" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="{StaticResource Fg}" />
+            <Setter Property="FontSize" Value="18" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="Margin" Value="0,0,0,4" />
+        </Style>
+        <Style x:Key="SectionHint" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="{StaticResource FgDim}" />
+            <Setter Property="FontSize" Value="12" />
+            <Setter Property="TextWrapping" Value="Wrap" />
+            <Setter Property="Margin" Value="0,0,0,14" />
+        </Style>
+        <Style x:Key="FieldLabel" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="{StaticResource FgDim}" />
+            <Setter Property="FontSize" Value="12" />
+            <Setter Property="Margin" Value="0,10,0,3" />
+        </Style>
+        <Style TargetType="CheckBox">
+            <Setter Property="Foreground" Value="{StaticResource Fg}" />
+            <Setter Property="FontFamily" Value="Segoe UI" />
+            <Setter Property="Margin" Value="0,8,0,0" />
+        </Style>
+        <Style TargetType="TextBox">
+            <Setter Property="Background" Value="#2B2B2B" />
+            <Setter Property="Foreground" Value="{StaticResource Fg}" />
+            <Setter Property="BorderBrush" Value="#3D3D3D" />
+            <Setter Property="Padding" Value="6,4" />
+            <Setter Property="FontFamily" Value="Segoe UI" />
+            <Setter Property="CaretBrush" Value="{StaticResource Fg}" />
+        </Style>
+        <Style TargetType="local:HotkeyCaptureBox" BasedOn="{StaticResource {x:Type TextBox}}">
+            <Setter Property="FontWeight" Value="SemiBold" />
+        </Style>
+        <Style TargetType="Button">
+            <Setter Property="Background" Value="#2B2B2B" />
+            <Setter Property="Foreground" Value="{StaticResource Fg}" />
+            <Setter Property="BorderBrush" Value="#3D3D3D" />
+            <Setter Property="Padding" Value="18,7" />
+            <Setter Property="FontFamily" Value="Segoe UI" />
+        </Style>
+    </Window.Resources>
+
+    <Grid>
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="160" />
+            <ColumnDefinition Width="*" />
+        </Grid.ColumnDefinitions>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <ListBox x:Name="Nav" Grid.Column="0" Grid.Row="0"
+                 Background="#181818" BorderThickness="0"
+                 Foreground="{StaticResource Fg}" FontFamily="Segoe UI" FontSize="14"
+                 SelectionChanged="Nav_SelectionChanged">
+            <ListBoxItem Content="General" Padding="14,10" IsSelected="True" />
+            <ListBoxItem Content="Dictation" Padding="14,10" />
+            <ListBoxItem Content="AI Cleanup" Padding="14,10" />
+            <ListBoxItem Content="Screenshot" Padding="14,10" />
+        </ListBox>
+
+        <ScrollViewer Grid.Column="1" Grid.Row="0" Padding="20,16" VerticalScrollBarVisibility="Auto">
+            <Grid>
+                <StackPanel x:Name="GeneralSection">
+                    <TextBlock Style="{StaticResource SectionTitle}" Text="General" />
+                    <TextBlock Style="{StaticResource SectionHint}"
+                               Text="App-wide behavior. Changes apply when you hit Save." />
+                    <CheckBox x:Name="GStartWithWindows" Content="Start PatchyFlow with Windows" />
+                    <CheckBox x:Name="GSounds" Content="Play start / cancel sounds" />
+                </StackPanel>
+
+                <StackPanel x:Name="DictationSection" Visibility="Collapsed">
+                    <TextBlock Style="{StaticResource SectionTitle}" Text="Dictation" />
+                    <TextBlock Style="{StaticResource SectionHint}"
+                               Text="Hold the hotkey and talk; release to type. Escape cancels." />
+                    <CheckBox x:Name="DEnabled" Content="Enable push-to-talk dictation" />
+                    <TextBlock Style="{StaticResource FieldLabel}" Text="Hotkey (click, then press the combo)" />
+                    <local:HotkeyCaptureBox x:Name="DHotkey" Width="220" HorizontalAlignment="Left" />
+                    <TextBlock Style="{StaticResource FieldLabel}" Text="Language (en, auto, or a Whisper language code)" />
+                    <TextBox x:Name="DLanguage" Width="120" HorizontalAlignment="Left" />
+                    <TextBlock Style="{StaticResource FieldLabel}" Text="Microphone name contains (empty = default communications mic)" />
+                    <TextBox x:Name="DMic" Width="300" HorizontalAlignment="Left" />
+                    <CheckBox x:Name="DAppendSpace" Content="Append a trailing space after each dictation" />
+                    <CheckBox x:Name="DRestoreClipboard" Content="Restore previous clipboard after pasting" />
+                </StackPanel>
+
+                <StackPanel x:Name="CleanupSection" Visibility="Collapsed">
+                    <TextBlock Style="{StaticResource SectionTitle}" Text="AI Cleanup" />
+                    <TextBlock Style="{StaticResource SectionHint}"
+                               Text="Delete-only pass: removes filler and resolves self-corrections, never rephrases. Falls back to the raw transcript on any doubt." />
+                    <CheckBox x:Name="CEnabled" Content="Enable AI cleanup" />
+                    <CheckBox x:Name="CContext" Content="Use active app + window title as context" />
+                    <TextBlock Style="{StaticResource FieldLabel}" Text="Anthropic API key" />
+                    <TextBox x:Name="CApiKey" Width="420" HorizontalAlignment="Left" />
+                    <TextBlock Style="{StaticResource FieldLabel}" Text="Model" />
+                    <TextBox x:Name="CModel" Width="220" HorizontalAlignment="Left" />
+                </StackPanel>
+
+                <StackPanel x:Name="ScreenshotSection" Visibility="Collapsed">
+                    <TextBlock Style="{StaticResource SectionTitle}" Text="Screenshot" />
+                    <TextBlock Style="{StaticResource SectionHint}"
+                               Text="Snip a region; the clipboard carries the image AND its text at the same time. Paste into anything — it takes the format it understands. Great for consoles." />
+                    <CheckBox x:Name="SEnabled" Content="Enable screenshot capture" />
+                    <TextBlock Style="{StaticResource FieldLabel}" Text="Hotkey (click, then press the combo)" />
+                    <local:HotkeyCaptureBox x:Name="SHotkey" Width="220" HorizontalAlignment="Left" />
+                    <CheckBox x:Name="SSmart" Content="Smart describe with Claude vision (structure, tables, workflows — needs API key)" />
+                    <TextBlock Style="{StaticResource FieldLabel}" Text="Also save PNGs to folder (empty = clipboard only)" />
+                    <TextBox x:Name="SSaveTo" Width="420" HorizontalAlignment="Left" />
+                </StackPanel>
+            </Grid>
+        </ScrollViewer>
+
+        <Border Grid.Column="0" Grid.ColumnSpan="2" Grid.Row="1" Background="#181818" Padding="16,10">
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                <TextBlock x:Name="SavedNote" Text="Saved." Foreground="{StaticResource Accent}"
+                           VerticalAlignment="Center" Margin="0,0,14,0" Visibility="Hidden" />
+                <Button Content="Save" Click="Save_Click" Margin="0,0,10,0" />
+                <Button Content="Close" Click="Close_Click" />
+            </StackPanel>
+        </Border>
+    </Grid>
+</Window>
