@@ -45,6 +45,35 @@ public sealed class KeyboardHook : IDisposable
     [DllImport("kernel32.dll", CharSet = CharSet.Unicode)]
     private static extern IntPtr GetModuleHandleW(string? lpModuleName);
 
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern uint SendInput(uint nInputs, INPUT[] pInputs, int cbSize);
+
+    private const uint INPUT_KEYBOARD = 1;
+    private const uint KEYEVENTF_KEYUP = 0x0002;
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct INPUT
+    {
+        public uint type;
+        public InputUnion u;
+    }
+
+    [StructLayout(LayoutKind.Explicit)]
+    private struct InputUnion
+    {
+        [FieldOffset(0)] public KEYBDINPUT ki;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct KEYBDINPUT
+    {
+        public ushort wVk;
+        public ushort wScan;
+        public uint dwFlags;
+        public uint time;
+        public IntPtr dwExtraInfo;
+    }
+
     [StructLayout(LayoutKind.Sequential)]
     private struct KBDLLHOOKSTRUCT
     {
@@ -162,6 +191,7 @@ public sealed class KeyboardHook : IDisposable
                 _engaged = false;
                 _suppressTargetUntilUp = _down.Contains(_targetVk);
                 Cancel?.Invoke();
+                ForceReleaseChordKeys();
                 return (IntPtr)1;
             }
             else if (!_engaged && vk == VK_ESCAPE && EscapeWhileIdle != null)
@@ -179,6 +209,7 @@ public sealed class KeyboardHook : IDisposable
                 {
                     _engaged = false;
                     ChordUp?.Invoke();
+                    ForceReleaseChordKeys();
                     if (_swallowedTargetDown) return (IntPtr)1;
                 }
                 else if (_suppressTargetUntilUp)
@@ -193,10 +224,37 @@ public sealed class KeyboardHook : IDisposable
                 _engaged = false;
                 _suppressTargetUntilUp = _down.Contains(_targetVk);
                 ChordUp?.Invoke();
+                ForceReleaseChordKeys();
             }
         }
 
         return CallNextHookEx(_hookId, nCode, wParam, lParam);
+    }
+
+    /// <summary>
+    /// Force-release every chord key after a dictation ends, so Windows can
+    /// never be left thinking Ctrl/Win/etc. is still held (which turns normal
+    /// typing into Win+key shortcuts). A keyup for a key the OS doesn't think
+    /// is down is a harmless no-op; a keyup for a stuck key clears it. These
+    /// injected events carry LLKHF_INJECTED and are ignored by our own hook,
+    /// so this does not recurse.
+    /// </summary>
+    private void ForceReleaseChordKeys()
+    {
+        var vks = new List<ushort> { (ushort)_targetVk };
+        if (_needCtrl) { vks.Add(0xA2); vks.Add(0xA3); vks.Add(0x11); }
+        if (_needShift) { vks.Add(0xA0); vks.Add(0xA1); vks.Add(0x10); }
+        if (_needAlt) { vks.Add(0xA4); vks.Add(0xA5); vks.Add(0x12); }
+        if (_needWin) { vks.Add(0x5B); vks.Add(0x5C); }
+
+        var inputs = vks.Select(vk => new INPUT
+        {
+            type = INPUT_KEYBOARD,
+            u = new InputUnion { ki = new KEYBDINPUT { wVk = vk, dwFlags = KEYEVENTF_KEYUP } },
+        }).ToArray();
+
+        try { SendInput((uint)inputs.Length, inputs, Marshal.SizeOf<INPUT>()); }
+        catch { /* best effort — a stuck key is worse than a failed release */ }
     }
 
     public void Dispose()
