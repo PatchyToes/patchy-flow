@@ -241,6 +241,10 @@ public sealed class FlowController : IDisposable
             _processingCts?.Dispose();
             _processingCts = null;
             _state = State.Idle;
+            // Safety net: by now the chord is certainly released. Clear any chord key
+            // the OS still thinks is held, even if the balancing key-up never reached
+            // the hook (hook timeout / secure desktop) so nothing gets left stuck.
+            _hook?.ReleaseStuckChordKeys();
         }
     }
 
@@ -258,6 +262,7 @@ public sealed class FlowController : IDisposable
         _overlay?.HideOverlay();
         if (_settings.EnableSounds) SoundFx.PlayCancel();
         _state = State.Idle;
+        _hook?.ReleaseStuckChordKeys();
         Log.Write("Dictation cancelled");
     }
 

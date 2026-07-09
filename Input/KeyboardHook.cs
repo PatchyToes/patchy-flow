@@ -6,8 +6,19 @@ namespace PatchyFlow;
 /// <summary>
 /// Low-level keyboard hook implementing hold-to-talk:
 /// chord down starts, chord up stops, Escape while engaged cancels.
-/// The non-modifier chord key is swallowed so it never reaches other apps
-/// (critical when the key is LWin — otherwise the Start menu opens).
+///
+/// The hook runs on its own dedicated thread with its own message pump. A
+/// WH_KEYBOARD_LL callback fires on the thread that installed it, and Windows
+/// silently skips the hook for any event that thread doesn't service within
+/// LowLevelHooksTimeout (~300ms). Running it on the UI thread meant it got
+/// starved during transcription/paste — exactly when the chord's key-up lands —
+/// so releases went missing and the key got left stuck. A dedicated thread is
+/// never blocked by UI work, so it sees every event.
+///
+/// A Windows-key target inside a modifier chord (e.g. Ctrl+Win) is NOT swallowed:
+/// the modifier already masks the Start menu, and passing the key through lets the
+/// OS own its state, so a dropped key-up can't leave Windows thinking it's held.
+/// See <see cref="ShouldSwallowTarget"/>.
 /// </summary>
 public sealed class KeyboardHook : IDisposable
 {
@@ -48,8 +59,40 @@ public sealed class KeyboardHook : IDisposable
     [DllImport("user32.dll", SetLastError = true)]
     private static extern uint SendInput(uint nInputs, INPUT[] pInputs, int cbSize);
 
+    [DllImport("user32.dll")]
+    private static extern short GetAsyncKeyState(int vKey);
+
+    // message pump for the dedicated hook thread
+    [DllImport("user32.dll")]
+    private static extern int GetMessage(out MSG lpMsg, IntPtr hWnd, uint wMsgFilterMin, uint wMsgFilterMax);
+
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool TranslateMessage(ref MSG lpMsg);
+
+    [DllImport("user32.dll")]
+    private static extern IntPtr DispatchMessage(ref MSG lpMsg);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool PostThreadMessage(uint idThread, uint msg, IntPtr wParam, IntPtr lParam);
+
+    [DllImport("kernel32.dll")]
+    private static extern uint GetCurrentThreadId();
+
+    private const uint WM_QUIT = 0x0012;
+
     private const uint INPUT_KEYBOARD = 1;
     private const uint KEYEVENTF_KEYUP = 0x0002;
+
+    // virtual-key codes for the chord participants we may need to force-release
+    private const ushort VK_LWIN = 0x5B, VK_RWIN = 0x5C;
+    private const ushort VK_LCONTROL = 0xA2, VK_RCONTROL = 0xA3, VK_CONTROL = 0x11;
+    private const ushort VK_LSHIFT = 0xA0, VK_RSHIFT = 0xA1, VK_SHIFT = 0x10;
+    private const ushort VK_LMENU = 0xA4, VK_RMENU = 0xA5, VK_MENU = 0x12;
+
+    private static bool IsWinKey(uint vk) => vk is VK_LWIN or VK_RWIN;
+    private static bool OsThinksDown(uint vk) => (GetAsyncKeyState((int)vk) & 0x8000) != 0;
 
     [StructLayout(LayoutKind.Sequential)]
     private struct INPUT
@@ -84,9 +127,27 @@ public sealed class KeyboardHook : IDisposable
         public IntPtr dwExtraInfo;
     }
 
+    [StructLayout(LayoutKind.Sequential)]
+    private struct MSG
+    {
+        public IntPtr hwnd;
+        public uint message;
+        public IntPtr wParam;
+        public IntPtr lParam;
+        public uint time;
+        public int pt_x;
+        public int pt_y;
+    }
+
     // keep a reference so the delegate isn't GC'd while the hook lives
     private readonly LowLevelKeyboardProc _proc;
     private IntPtr _hookId = IntPtr.Zero;
+
+    // the hook lives on its own thread with its own message pump (see class summary)
+    private Thread? _hookThread;
+    private uint _hookThreadId;
+    private readonly ManualResetEventSlim _installGate = new(false);
+    private string? _installError;
 
     private uint _targetVk;
     private bool _needCtrl, _needShift, _needAlt, _needWin;
@@ -94,9 +155,10 @@ public sealed class KeyboardHook : IDisposable
     private readonly HashSet<uint> _down = new();
     private bool _engaged;
     private bool _suppressTargetUntilUp;
-    // true when we swallowed the target key's down event; only then may we swallow its up.
-    // If the down leaked to the OS (chord pressed in the other order), swallowing the up
-    // would leave Windows thinking the key (e.g. LWin) is held forever.
+    // Whether we swallowed the target key's down; only then may we swallow its up, so the
+    // two stay symmetric. For a Windows target in a modifier chord we intentionally do NOT
+    // swallow (see ShouldSwallowTarget) — passing the key through lets the OS own its state,
+    // so a missed key-up can never leave Windows thinking the key is held.
     private bool _swallowedTargetDown;
 
     public KeyboardHook(HotkeyConfig config)
@@ -121,10 +183,51 @@ public sealed class KeyboardHook : IDisposable
 
     public void Install()
     {
-        if (_hookId != IntPtr.Zero) return;
-        _hookId = SetWindowsHookExW(WH_KEYBOARD_LL, _proc, GetModuleHandleW(null), 0);
-        if (_hookId == IntPtr.Zero)
-            throw new InvalidOperationException($"SetWindowsHookEx failed: {Marshal.GetLastWin32Error()}");
+        if (_hookThread != null) return;
+
+        _hookThread = new Thread(HookThreadMain)
+        {
+            IsBackground = true,
+            Name = "PatchyFlow-KeyboardHook",
+        };
+        _hookThread.Start();
+
+        // Block until the hook is actually installed (or failed) so callers keep the
+        // old synchronous semantics: after Install() returns, the hook is live.
+        _installGate.Wait();
+        if (_installError != null)
+            throw new InvalidOperationException($"SetWindowsHookEx failed: {_installError}");
+    }
+
+    private void HookThreadMain()
+    {
+        _hookThreadId = GetCurrentThreadId();
+
+        try
+        {
+            _hookId = SetWindowsHookExW(WH_KEYBOARD_LL, _proc, GetModuleHandleW(null), 0);
+            if (_hookId == IntPtr.Zero)
+                _installError = Marshal.GetLastWin32Error().ToString();
+        }
+        catch (Exception ex) { _installError = ex.Message; }
+        finally { _installGate.Set(); }
+
+        if (_hookId == IntPtr.Zero) return;
+
+        // Pump messages so the low-level hook callback is serviced on THIS thread and
+        // never starved by the UI thread. GetMessage blocks (no busy-spin) and returns
+        // 0 when Dispose posts WM_QUIT, which ends the loop and tears the hook down.
+        while (GetMessage(out var msg, IntPtr.Zero, 0, 0) > 0)
+        {
+            TranslateMessage(ref msg);
+            DispatchMessage(ref msg);
+        }
+
+        if (_hookId != IntPtr.Zero)
+        {
+            UnhookWindowsHookEx(_hookId);
+            _hookId = IntPtr.Zero;
+        }
     }
 
     private bool IsDownEither(uint l, uint r) => _down.Contains(l) || _down.Contains(r);
@@ -143,6 +246,15 @@ public sealed class KeyboardHook : IDisposable
         (_needShift && vk is 0xA0 or 0xA1) ||
         (_needAlt && vk is 0xA4 or 0xA5) ||
         (_needWin && vk is 0x5B or 0x5C);
+
+    // We swallow the target key to keep it out of the focused app during a hold. The
+    // one case we must NOT swallow is a Windows key inside a chord that already has
+    // another modifier: Ctrl/Shift/Alt naturally mask the Start menu, and swallowing a
+    // Windows key is exactly what turns a dropped key-up into a stuck-key catastrophe.
+    // A non-Win target is always safe to swallow (a stuck F-key does nothing); a bare
+    // Windows-key hotkey has no masking modifier, so it must still be swallowed.
+    private bool ShouldSwallowTarget =>
+        !IsWinKey(_targetVk) || !(_needCtrl || _needShift || _needAlt);
 
     private IntPtr HookProc(int nCode, IntPtr wParam, IntPtr lParam)
     {
@@ -165,16 +277,36 @@ public sealed class KeyboardHook : IDisposable
 
         if (isDown)
         {
+            // Self-heal: if the Windows chord key is the target and the OS still
+            // thinks it's held while we're idle (a phantom left by a missed key-up
+            // on a leaked down), clear it before this keystroke becomes a Win+key
+            // shortcut. Guarded on our own view of the key being physically up, so
+            // we never fight a chord that's legitimately forming.
+            if (!_engaged && !_suppressTargetUntilUp && vk != _targetVk
+                && IsWinKey(_targetVk) && !_down.Contains(_targetVk) && OsThinksDown(_targetVk))
+            {
+                SendKeyUps(new[] { (ushort)_targetVk });
+            }
+
             if (vk == _targetVk)
             {
-                if (_engaged) return (IntPtr)1; // key repeat while engaged
-                if (_suppressTargetUntilUp) return (IntPtr)1;
+                // Key repeat while engaged, or a lingering target-down after a cancel:
+                // never re-trigger. Swallow only if we swallowed the original down, so
+                // down and up stay symmetric.
+                if (_engaged || _suppressTargetUntilUp)
+                    return _swallowedTargetDown
+                        ? (IntPtr)1
+                        : CallNextHookEx(_hookId, nCode, wParam, lParam);
+
                 if (ModsSatisfied())
                 {
                     _engaged = true;
-                    _swallowedTargetDown = true;
+                    // Only swallow when we must. For a Windows target inside a modifier
+                    // chord we pass it through and let the modifier mask the Start menu —
+                    // that's what stops a missed key-up from becoming a stuck Windows key.
+                    _swallowedTargetDown = ShouldSwallowTarget;
                     ChordDown?.Invoke();
-                    return (IntPtr)1;
+                    if (_swallowedTargetDown) return (IntPtr)1;
                 }
             }
             else if (!_engaged && !_suppressTargetUntilUp
@@ -232,37 +364,90 @@ public sealed class KeyboardHook : IDisposable
     }
 
     /// <summary>
-    /// Force-release every chord key after a dictation ends, so Windows can
-    /// never be left thinking Ctrl/Win/etc. is still held (which turns normal
-    /// typing into Win+key shortcuts). A keyup for a key the OS doesn't think
-    /// is down is a harmless no-op; a keyup for a stuck key clears it. These
-    /// injected events carry LLKHF_INJECTED and are ignored by our own hook,
-    /// so this does not recurse.
+    /// Safety net the controller calls whenever a dictation fully ends — even if
+    /// the balancing key-up was never observed by this hook (hook timeout, secure
+    /// desktop, focus change). By the time a dictation has finished processing the
+    /// user has certainly released the chord, so any chord key the OS still reports
+    /// as held is a phantom and gets cleared. Decoupling the release from observing
+    /// the up event is the whole robustness win — the old code could only fire from
+    /// branches that processed an up, which are exactly the events that go missing.
+    /// </summary>
+    public void ReleaseStuckChordKeys() => ForceReleaseChordKeys();
+
+    /// <summary>
+    /// Force-release every chord key so Windows is never left thinking Ctrl/Win/etc.
+    /// is still held (which turns normal typing into Win+key shortcuts).
+    ///
+    /// Plain modifiers (Ctrl/Shift/Alt) are released unconditionally: a stray keyup
+    /// for one that isn't down is a harmless no-op. The Windows key is different — a
+    /// lone injected LWin keyup when the OS doesn't think it's down can itself pop
+    /// the Start menu, so it's released ONLY when the OS actually reports it held.
+    /// Injected events carry LLKHF_INJECTED and are ignored by our own hook, so this
+    /// does not recurse.
     /// </summary>
     private void ForceReleaseChordKeys()
     {
-        var vks = new List<ushort> { (ushort)_targetVk };
-        if (_needCtrl) { vks.Add(0xA2); vks.Add(0xA3); vks.Add(0x11); }
-        if (_needShift) { vks.Add(0xA0); vks.Add(0xA1); vks.Add(0x10); }
-        if (_needAlt) { vks.Add(0xA4); vks.Add(0xA5); vks.Add(0x12); }
-        if (_needWin) { vks.Add(0x5B); vks.Add(0x5C); }
+        var vks = new List<ushort>();
 
-        var inputs = vks.Select(vk => new INPUT
+        // target key: gate Win keys on real OS state; release anything else outright
+        if (!IsWinKey(_targetVk) || OsThinksDown(_targetVk)) vks.Add((ushort)_targetVk);
+
+        if (_needCtrl) { vks.Add(VK_LCONTROL); vks.Add(VK_RCONTROL); vks.Add(VK_CONTROL); }
+        if (_needShift) { vks.Add(VK_LSHIFT); vks.Add(VK_RSHIFT); vks.Add(VK_SHIFT); }
+        if (_needAlt) { vks.Add(VK_LMENU); vks.Add(VK_RMENU); vks.Add(VK_MENU); }
+        if (_needWin)
         {
-            type = INPUT_KEYBOARD,
-            u = new InputUnion { ki = new KEYBDINPUT { wVk = vk, dwFlags = KEYEVENTF_KEYUP } },
-        }).ToArray();
+            if (OsThinksDown(VK_LWIN)) vks.Add(VK_LWIN);
+            if (OsThinksDown(VK_RWIN)) vks.Add(VK_RWIN);
+        }
 
-        try { SendInput((uint)inputs.Length, inputs, Marshal.SizeOf<INPUT>()); }
+        SendKeyUps(vks);
+    }
+
+    private static void SendKeyUps(IReadOnlyCollection<ushort> vks)
+    {
+        if (vks.Count == 0) return;
+
+        // Windows opens the Start menu / Quick Settings flyout (the "sound menu")
+        // whenever it sees a Windows-key press-and-release with no other key in
+        // between. A phantom-held Win key means the OS already saw the down, so the
+        // lone keyup we inject to clear it completes that press/release pair and
+        // pops the menu — exactly the symptom that shows up as a dictation ends.
+        // Mask it the way the OS does internally (and AutoHotkey via A_MenuMaskKey):
+        // inject an inert Ctrl tap first so the Win release reads as part of a chord,
+        // not a tap. Ctrl is the safe mask — Win+Ctrl and Alt+Ctrl trigger nothing.
+        bool maskWin = vks.Any(vk => vk is VK_LWIN or VK_RWIN);
+
+        var inputs = new List<INPUT>(vks.Count + 2);
+        if (maskWin)
+        {
+            inputs.Add(KeyEvent(VK_LCONTROL, down: true));
+            inputs.Add(KeyEvent(VK_LCONTROL, down: false));
+        }
+        foreach (var vk in vks)
+            inputs.Add(KeyEvent(vk, down: false));
+
+        try { SendInput((uint)inputs.Count, inputs.ToArray(), Marshal.SizeOf<INPUT>()); }
         catch { /* best effort — a stuck key is worse than a failed release */ }
     }
 
+    private static INPUT KeyEvent(ushort vk, bool down) => new()
+    {
+        type = INPUT_KEYBOARD,
+        u = new InputUnion { ki = new KEYBDINPUT { wVk = vk, dwFlags = down ? 0u : KEYEVENTF_KEYUP } },
+    };
+
     public void Dispose()
     {
-        if (_hookId != IntPtr.Zero)
+        var thread = _hookThread;
+        if (thread != null)
         {
-            UnhookWindowsHookEx(_hookId);
-            _hookId = IntPtr.Zero;
+            // Wake the hook thread's GetMessage and tell it to exit; it unhooks itself.
+            if (_hookThreadId != 0)
+                PostThreadMessage(_hookThreadId, WM_QUIT, IntPtr.Zero, IntPtr.Zero);
+            thread.Join(TimeSpan.FromSeconds(2));
+            _hookThread = null;
         }
+        _installGate.Dispose();
     }
 }
