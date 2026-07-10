@@ -26,11 +26,24 @@ public partial class HistoryWindow : Window
         }
         catch { }
         Load();
+
+        // Refresh live as new dictations land, so there's no manual Refresh to remember.
+        HistoryStore.Changed += OnHistoryChanged;
+        Closed += (_, _) => HistoryStore.Changed -= OnHistoryChanged;
     }
+
+    // The Changed event may fire off the UI thread; marshal the reload.
+    private void OnHistoryChanged() => Dispatcher.BeginInvoke(new Action(Load));
 
     private void Load()
     {
         RenderStats();
+
+        // Follow-the-tail: if the user is sitting on the newest entry, keep them on the
+        // newest after refresh; if they've scrolled to an older one, keep them on THAT
+        // entry; if it was trimmed away, fall back to newest.
+        int prevIndex = HList.SelectedIndex;
+        var prevSelected = (prevIndex >= 0 && prevIndex < _entries.Count) ? _entries[prevIndex] : null;
 
         _entries = HistoryStore.ReadRecent(500);
         HList.Items.Clear();
@@ -41,8 +54,20 @@ public partial class HistoryWindow : Window
             var app = string.IsNullOrEmpty(e.App) ? "" : $"[{e.App}] ";
             HList.Items.Add($"{e.Ts:MMM d  HH:mm}   {app}{preview}");
         }
-        if (_entries.Count == 0) HList.Items.Add("(no dictations yet)");
-        else { HList.SelectedIndex = 0; }
+
+        if (_entries.Count == 0)
+        {
+            HList.Items.Add("(no dictations yet)");
+            return;
+        }
+
+        int idx = 0; // default: newest
+        if (prevSelected != null && prevIndex != 0)
+        {
+            int found = _entries.FindIndex(e => e.Ts == prevSelected.Ts && e.Text == prevSelected.Text);
+            if (found >= 0) idx = found;
+        }
+        HList.SelectedIndex = idx;
     }
 
     private void RenderStats()

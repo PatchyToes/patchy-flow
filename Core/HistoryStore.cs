@@ -14,6 +14,9 @@ public static class HistoryStore
     private static readonly object Gate = new();
     private static string FilePath => Path.Combine(Paths.DataDir, "history.jsonl");
 
+    /// <summary>Raised after a dictation is appended, so an open history view can refresh live.</summary>
+    public static event Action? Changed;
+
     public static void Append(string text, string app, int keepLast)
     {
         if (string.IsNullOrWhiteSpace(text)) return;
@@ -30,7 +33,9 @@ public static class HistoryStore
         catch (Exception ex)
         {
             Log.Write($"History append failed: {ex.Message}");
+            return;
         }
+        Changed?.Invoke();
     }
 
     public static List<HistoryEntry> ReadRecent(int count)
