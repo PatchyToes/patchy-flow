@@ -96,7 +96,18 @@ public sealed class Transcriber : IDisposable
 
         var sb = new StringBuilder();
         await foreach (var segment in processor.ProcessAsync(samples, cancel))
+        {
+            // Whisper hallucinates stock captions ("Thank you", "Thanks for watching") on
+            // silence — including trailing silence after real speech. When it flags a
+            // segment as almost certainly non-speech, drop it. Threshold is deliberately
+            // high so real (even quiet) speech, which scores low here, is never dropped.
+            if (segment.NoSpeechProbability >= 0.8f)
+            {
+                Log.Write($"Dropped likely-silence segment (no-speech {segment.NoSpeechProbability:0.00}): \"{segment.Text.Trim()}\"");
+                continue;
+            }
             sb.Append(segment.Text);
+        }
 
         var text = CleanUp(sb.ToString(), prompt);
         Log.Write($"Transcribed {samples.Length / 16000.0:0.0}s of audio in {sw.ElapsedMilliseconds}ms -> {text.Length} chars");

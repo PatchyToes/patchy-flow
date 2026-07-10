@@ -187,7 +187,9 @@ public sealed class FlowController : IDisposable
             var samples = await recorder.StopAsync();
             recorder.Dispose();
 
-            if (heldMs < _settings.MinHoldMs || samples.Length < AudioRecorder.TargetRate / 4)
+            if (heldMs < _settings.MinHoldMs
+                || samples.Length < AudioRecorder.TargetRate / 4
+                || IsSilent(samples))
             {
                 _overlay?.HideOverlay();
                 _state = State.Idle;
@@ -246,6 +248,26 @@ public sealed class FlowController : IDisposable
             // the hook (hook timeout / secure desktop) so nothing gets left stuck.
             _hook?.ReleaseStuckChordKeys();
         }
+    }
+
+    // Whisper hallucinates stock phrases ("thank you") when handed (near-)silent audio,
+    // e.g. the mic is keyed but nothing is said. If the clip carries no speech energy,
+    // drop it rather than transcribe noise. Conservative: BOTH peak and RMS must be tiny,
+    // so a stray pop (high peak) or genuinely soft speech (rms above the floor) still
+    // transcribes. The waveform maps rms*9 -> level, so rms 0.005 is a flat waveform.
+    private static bool IsSilent(float[] samples)
+    {
+        float peak = 0f, sumSq = 0f;
+        for (int i = 0; i < samples.Length; i++)
+        {
+            float a = Math.Abs(samples[i]);
+            if (a > peak) peak = a;
+            sumSq += samples[i] * samples[i];
+        }
+        float rms = samples.Length > 0 ? (float)Math.Sqrt(sumSq / samples.Length) : 0f;
+        bool silent = peak < 0.02f && rms < 0.005f;
+        if (silent) Log.Write($"Dropped silent capture (peak {peak:0.000}, rms {rms:0.000})");
+        return silent;
     }
 
     // Belt-and-suspenders: guarantees no em/en dash ever reaches the paste,
