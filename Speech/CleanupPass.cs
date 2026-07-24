@@ -144,6 +144,13 @@ public static class CleanupPass
     // instead of cleaning. The ramble is the value, so reject and fall back to raw.
     private const double RetentionFloor = 0.70;
 
+    // Escape hatch for the floor: word count alone can't tell summarizing from
+    // removing a large Whisper duplication glitch (same block transcribed twice).
+    // Deleting a duplicate removes no vocabulary — every distinct word still
+    // appears elsewhere — while summarizing guts it. So a low word-count ratio is
+    // still accepted when nearly all distinct words survive.
+    private const double DedupTypeCoverage = 0.90;
+
     /// <summary>
     /// Undercorrection as a guarantee: the cleaned text must be made of the
     /// speaker's own words (>=88% token overlap), must not grow, and must not
@@ -161,9 +168,20 @@ public static class CleanupPass
         var cleanedTokens = Tokenize(cleaned);
         if (cleanedTokens.Count == 0) return false;
 
-        // Reject over-deletion: too many of the speaker's words are gone.
+        // Reject over-deletion: too many of the speaker's words are gone — unless
+        // the vocabulary survived, which means duplicates were removed, not content.
         if (rawTokens.Count > 0 && (double)cleanedTokens.Count / rawTokens.Count < RetentionFloor)
-            return false;
+        {
+            var rawTypes = new HashSet<string>(rawTokens);
+            var cleanedTypes = new HashSet<string>(cleanedTokens);
+            int keptTypes = rawTypes.Count(cleanedTypes.Contains);
+            double coverage = (double)keptTypes / rawTypes.Count;
+            if (coverage < DedupTypeCoverage)
+            {
+                Log.Write($"Guard floor: kept {(double)cleanedTokens.Count / rawTokens.Count:P0} of words, {coverage:P0} of vocabulary");
+                return false;
+            }
+        }
 
         var pool = new Dictionary<string, int>();
         foreach (var t in rawTokens)
