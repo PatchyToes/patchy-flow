@@ -12,13 +12,22 @@ namespace PatchyFlow;
 public static class CleanupPass
 {
     private const string SystemPrompt =
-        "You clean up and lightly format dictated speech-to-text transcripts.\n" +
-        "REMOVE (delete-only):\n" +
-        "- Filler words (um, uh, and 'you know'/'like' when used as pure filler).\n" +
-        "- False starts and the abandoned half of self-corrections, keeping only the speaker's " +
-        "final version. Example: 'send it Tuesday, no wait, Thursday' becomes 'send it Thursday'.\n" +
-        "- Duplicated sentences or phrases that are obvious transcription glitches (the same line " +
-        "repeated back-to-back, exactly or near-exactly; keep one copy).\n" +
+        "You reformat dictated speech-to-text for readability. Your job is to make the transcript " +
+        "easier to READ, not to edit what was said.\n" +
+        "PRESERVE EVERYTHING THE SPEAKER SAYS. Keep every point, aside, tangent, and repetition, in " +
+        "the original order and the speaker's own words. The speaker is usually thinking out loud, and " +
+        "the full ramble is the value, not noise to be trimmed. Never condense it. Do NOT drop a " +
+        "sentence or idea because it seems redundant, long-winded, off-topic, or unimportant. When you " +
+        "are unsure whether something belongs, keep it. Err toward keeping too much.\n" +
+        "REMOVE only true verbal disfluencies:\n" +
+        "- Filler sounds: um, uh, er, ah, hmm.\n" +
+        "- 'you know', 'like', 'I mean', 'sort of', 'kind of' ONLY when used as empty filler, never " +
+        "when they carry meaning.\n" +
+        "- An immediately repeated (stuttered) word, or a sentence transcribed back-to-back twice; " +
+        "keep one copy.\n" +
+        "- The abandoned half of an explicit, immediate self-correction, ONLY when it is unmistakable. " +
+        "Example: 'send it Tuesday, no wait, Thursday' becomes 'send it Thursday'. If it might instead " +
+        "be the speaker developing, restating, or circling back on a thought, KEEP both.\n" +
         "PUNCTUATION & STRUCTURE (whitespace and punctuation only, never words):\n" +
         "- Fix punctuation and capitalization. Break long run-on stream-of-consciousness passages " +
         "into sentences and paragraphs for readability.\n" +
@@ -28,10 +37,10 @@ public static class CleanupPass
         "as a question; when unsure, leave it as a statement.\n" +
         "- When the speaker clearly enumerates items, format them as a simple bulleted or numbered list.\n" +
         "- NEVER use em dashes or en dashes. Use commas, periods, or parentheses instead.\n" +
-        "HARD RULE: never rephrase, reorder, summarize, expand, or substitute the speaker's words. " +
-        "Keep their exact wording and word order. You may only delete filler/false-starts, fix " +
-        "punctuation and capitalization, and add whitespace or list structure. If it needs nothing, " +
-        "return it unchanged. Output only the cleaned text — no commentary, no quotes.";
+        "HARD RULE: never summarize, shorten, rephrase, reorder, expand, or substitute the speaker's " +
+        "words. Keep their exact wording and word order. You may ONLY delete the disfluencies listed " +
+        "above, fix punctuation and capitalization, and add whitespace or list structure. If it needs " +
+        "nothing, return it unchanged. Output only the cleaned text — no commentary, no quotes.";
 
     // A deliberately smaller job for the local engine. Small models drift when asked
     // to exercise judgment (collapsing self-corrections, inferring questions, "fixing"
@@ -130,9 +139,15 @@ public static class CleanupPass
         }
     }
 
+    // Filler removal legitimately trims some words, but cleaned text that drops
+    // below this fraction of the original word count means the model summarized
+    // instead of cleaning. The ramble is the value, so reject and fall back to raw.
+    private const double RetentionFloor = 0.70;
+
     /// <summary>
     /// Undercorrection as a guarantee: the cleaned text must be made of the
-    /// speaker's own words (>=88% token overlap) and must not grow.
+    /// speaker's own words (>=88% token overlap), must not grow, and must not
+    /// shrink below the retention floor (which would mean summarizing, not cleaning).
     /// </summary>
     private static bool PassesGuard(string raw, string cleaned)
     {
@@ -145,6 +160,10 @@ public static class CleanupPass
         var rawTokens = Tokenize(raw);
         var cleanedTokens = Tokenize(cleaned);
         if (cleanedTokens.Count == 0) return false;
+
+        // Reject over-deletion: too many of the speaker's words are gone.
+        if (rawTokens.Count > 0 && (double)cleanedTokens.Count / rawTokens.Count < RetentionFloor)
+            return false;
 
         var pool = new Dictionary<string, int>();
         foreach (var t in rawTokens)
