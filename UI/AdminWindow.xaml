@@ -107,8 +107,8 @@
                     <local:HotkeyCaptureBox x:Name="DHotkey" Width="220" HorizontalAlignment="Left" />
                     <TextBlock Style="{StaticResource FieldLabel}" Text="Language (en, auto, or a Whisper language code)" />
                     <TextBox x:Name="DLanguage" Width="120" HorizontalAlignment="Left" />
-                    <TextBlock Style="{StaticResource FieldLabel}" Text="Microphone name contains (empty = default communications mic)" />
-                    <TextBox x:Name="DMic" Width="300" HorizontalAlignment="Left" />
+                    <TextBlock Style="{StaticResource FieldLabel}" Text="Microphone (empty = default communications mic)" />
+                    <ComboBox x:Name="DMic" Width="300" HorizontalAlignment="Left" IsEditable="True" />
                     <CheckBox x:Name="DAppendSpace" Content="Append a trailing space after each dictation" />
                     <CheckBox x:Name="DRestoreClipboard" Content="Restore previous clipboard after pasting" />
                 </StackPanel>

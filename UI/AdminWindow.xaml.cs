@@ -33,6 +33,7 @@ public partial class AdminWindow : Window
         DEnabled.IsChecked = s.DictationEnabled;
         DHotkey.Load(s.Hotkey);
         DLanguage.Text = s.Language;
+        DMic.ItemsSource = AudioRecorder.CaptureDeviceNames();
         DMic.Text = s.MicDeviceName;
         DAppendSpace.IsChecked = s.AppendSpace;
         DRestoreClipboard.IsChecked = s.RestoreClipboard;

@@ -27,6 +27,29 @@ public sealed class AudioRecorder : IDisposable
 
     public bool IsRecording { get; private set; }
 
+    /// <summary>
+    /// Friendly names of every active capture device, for the settings dropdown.
+    /// Stored setting stays a substring filter, so a full name here still matches.
+    /// </summary>
+    public static IReadOnlyList<string> CaptureDeviceNames()
+    {
+        try
+        {
+            var enumerator = new MMDeviceEnumerator();
+            return enumerator
+                .EnumerateAudioEndPoints(DataFlow.Capture, DeviceState.Active)
+                .Select(d => d.FriendlyName)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .OrderBy(n => n, StringComparer.OrdinalIgnoreCase)
+                .ToList();
+        }
+        catch (Exception ex)
+        {
+            Log.Write($"Enumerating capture devices failed: {ex.Message}");
+            return Array.Empty<string>();
+        }
+    }
+
     public static MMDevice? PickDevice(string nameFilter)
     {
         var enumerator = new MMDeviceEnumerator();
