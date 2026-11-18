@@ -54,6 +54,11 @@ Ask, wait for the answer, then ask the next. Check anything you can check yourse
      later is a one-line settings change.
    - No usable GPU at all (CPU fallback): `ggml-base.en.bin` (~150 MB). Tell them
      accuracy will be rough.
+   **Known target machine (first handoff):** Surface Book 3, i7-1065G7, 32 GB RAM,
+   Windows 11 Home. Its NVIDIA GPU (GTX 1650 4 GB on the 13.5", GTX 1660 Ti 6 GB on
+   the 15") lives in the keyboard base, so it's only there when docked; detached, it
+   runs on the Iris Plus iGPU. Use `ggml-large-v3-turbo.bin` and confirm Vulkan loaded.
+   If dictation feels slow while detached, drop to `ggml-small.en.bin`.
    Set it via `"Model"` in `settings.json`; the app downloads whatever is named there
    on next start (tray shows progress). Confirm which runtime loaded in `log.txt`
    ("runtime: Cuda/Vulkan/Cpu"). Vulkan needs current GPU drivers.
