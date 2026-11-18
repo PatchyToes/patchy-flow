@@ -97,21 +97,90 @@ public sealed class Transcriber : IDisposable
         var sb = new StringBuilder();
         await foreach (var segment in processor.ProcessAsync(samples, cancel))
         {
-            // Whisper hallucinates stock captions ("Thank you", "Thanks for watching") on
-            // silence — including trailing silence after real speech. When it flags a
-            // segment as almost certainly non-speech, drop it. Threshold is deliberately
-            // high so real (even quiet) speech, which scores low here, is never dropped.
-            if (segment.NoSpeechProbability >= 0.8f)
-            {
-                Log.Write($"Dropped likely-silence segment (no-speech {segment.NoSpeechProbability:0.00}): \"{segment.Text.Trim()}\"");
-                continue;
-            }
+            if (IsHallucination(segment, samples)) continue;
             sb.Append(segment.Text);
         }
 
         var text = CleanUp(sb.ToString(), prompt);
         Log.Write($"Transcribed {samples.Length / 16000.0:0.0}s of audio in {sw.ElapsedMilliseconds}ms -> {text.Length} chars");
         return text;
+    }
+
+    // Stock caption boilerplate from Whisper's subtitle training data. These are what it
+    // emits when asked to transcribe something that isn't speech. Only ever used to judge
+    // a segment whose audio is already measurably quiet — never as a blanket text filter,
+    // because every one of these is also a thing a person can genuinely say.
+    private static readonly HashSet<string> StockCaptions = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "thank you", "thank you.", "thanks", "thank you very much", "thank you so much",
+        "thanks for watching", "thank you for watching", "thanks for watching!",
+        "thanks for listening", "please subscribe", "subscribe", "like and subscribe",
+        "see you next time", "i'll see you next time", "see you in the next video",
+        "bye", "bye bye", "goodbye", "you", "the end", "amen", "okay", "oh",
+        "transcription by castingwords", "subtitles by the amara.org community",
+    };
+
+    /// <summary>
+    /// Whisper invents text when it is fed something that isn't speech — trailing silence,
+    /// the zero-padding it adds to reach a full 30s window, or a pause between sentences.
+    /// That is where the stray "Thank you" endings and random names come from.
+    ///
+    /// The model's own no-speech score can't catch this: whisper.cpp computes it once per
+    /// 30s window and stamps every segment in that window with it, so a hallucination sitting
+    /// right after real speech inherits the real speech's confident score. (Confirmed: the
+    /// old >=0.8 check never fired once across thousands of dictations.)
+    ///
+    /// So measure the actual audio under the segment instead. Two tiers, both conservative:
+    /// dead air can't have produced any words, and audio that is merely quiet is only
+    /// overruled when the text is known subtitle boilerplate.
+    /// </summary>
+    private static bool IsHallucination(SegmentData segment, float[] samples)
+    {
+        var text = segment.Text.Trim();
+        if (text.Length == 0) return false;
+
+        // Whisper's timestamps drift by a few hundred ms, so widen the span before
+        // measuring. Any real speech leaking into the window keeps the segment.
+        const float Guard = 0.35f;
+        int from = (int)((segment.Start.TotalSeconds - Guard) * 16000);
+        int to = (int)((segment.End.TotalSeconds + Guard) * 16000);
+        from = Math.Clamp(from, 0, samples.Length);
+        to = Math.Clamp(to, 0, samples.Length);
+
+        // Segment lands entirely past the end of the recording: it was generated from the
+        // zero-padding whisper.cpp appends to fill out the last window. Always fake.
+        if (to <= from)
+        {
+            Log.Write($"Dropped segment from silent padding past end of audio: \"{text}\"");
+            return true;
+        }
+
+        float peak = 0f, sumSq = 0f;
+        for (int i = from; i < to; i++)
+        {
+            float a = Math.Abs(samples[i]);
+            if (a > peak) peak = a;
+            sumSq += samples[i] * samples[i];
+        }
+        float rms = (float)Math.Sqrt(sumSq / (to - from));
+
+        // Tier 1 — dead air. Nothing was said here, whatever the model wrote.
+        if (peak < 0.02f && rms < 0.005f)
+        {
+            Log.Write($"Dropped hallucinated segment on silence (peak {peak:0.000}, rms {rms:0.000}): \"{text}\"");
+            return true;
+        }
+
+        // Tier 2 — audible but far below speech level (breath, keyboard, room tone).
+        // Only drop it if the model wrote known caption boilerplate.
+        var bare = Regex.Replace(text, @"[^\w' ]", "").Trim();
+        if (rms < 0.015f && StockCaptions.Contains(bare))
+        {
+            Log.Write($"Dropped stock caption over non-speech (peak {peak:0.000}, rms {rms:0.000}): \"{text}\"");
+            return true;
+        }
+
+        return false;
     }
 
     private static string CleanUp(string text, string? prompt)

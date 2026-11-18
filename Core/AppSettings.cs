@@ -91,7 +91,10 @@ public sealed class AppSettings
     public bool EnableSounds { get; set; } = true;
 
     /// <summary>Safety stop for a runaway recording, in seconds.</summary>
-    public int MaxRecordingSeconds { get; set; } = 300;
+    public int MaxRecordingSeconds { get; set; } = 900;
+
+    /// <summary>The old 5-minute ceiling, bumped once on load. See Load().</summary>
+    private const int LegacyMaxRecordingSeconds = 300;
 
     /// <summary>Anthropic API key for the correction pass. Empty = pass disabled, raw transcripts.</summary>
     public string AnthropicApiKey { get; set; } = "";
@@ -136,7 +139,19 @@ public sealed class AppSettings
             if (File.Exists(Paths.SettingsPath))
             {
                 var loaded = JsonSerializer.Deserialize<AppSettings>(File.ReadAllText(Paths.SettingsPath), JsonOpts);
-                if (loaded != null) return loaded;
+                if (loaded != null)
+                {
+                    // The 5-minute ceiling was a safety valve against a stuck hotkey, but
+                    // long dictations were hitting it and silently losing everything said
+                    // after it fired. Anyone still on the old default gets the new one.
+                    if (loaded.MaxRecordingSeconds == LegacyMaxRecordingSeconds)
+                    {
+                        loaded.MaxRecordingSeconds = new AppSettings().MaxRecordingSeconds;
+                        loaded.Save();
+                        Log.Write($"Raised max recording length to {loaded.MaxRecordingSeconds}s (was the old {LegacyMaxRecordingSeconds}s default)");
+                    }
+                    return loaded;
+                }
             }
         }
         catch (Exception ex)

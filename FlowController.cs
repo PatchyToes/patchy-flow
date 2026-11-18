@@ -71,7 +71,11 @@ public sealed class FlowController : IDisposable
         {
             if (_state == State.Recording)
             {
-                Log.Write("Max recording duration hit; force-stopping");
+                Log.Write($"Max recording duration hit ({_settings.MaxRecordingSeconds}s); force-stopping");
+                // Tell the user. This used to stop silently, so a long dictation that ran
+                // past the limit just lost its ending with no sign anything had happened.
+                _tray?.Balloon("PatchyFlow — recording length limit",
+                    $"Stopped at {_settings.MaxRecordingSeconds / 60} minutes. Anything said after that wasn't captured.");
                 OnChordUp();
             }
         };

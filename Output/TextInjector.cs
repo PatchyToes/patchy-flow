@@ -91,7 +91,13 @@ public static class TextInjector
         }
 
         SendCtrlV();
-        await Task.Delay(250); // give the target app time to consume the paste
+
+        // Give the target app time to actually read the clipboard before we hand it back.
+        // Apps pull the data asynchronously and bigger payloads take longer, so a fixed
+        // wait is a race that a long dictation loses — the restore lands mid-read and the
+        // end of the text never arrives. Scale the wait with the text instead.
+        var settle = TimeSpan.FromMilliseconds(Math.Clamp(250 + text.Length / 4.0, 250, 2500));
+        await Task.Delay(settle);
 
         if (restoreClipboard && previous != null)
         {

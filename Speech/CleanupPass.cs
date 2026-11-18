@@ -114,6 +114,12 @@ public static class CleanupPass
             // Local tokens are non-billable so they never inflate the cost estimate.
             Stats.RecordAiCall(result.InputTokens, result.OutputTokens, billable: !local);
 
+            if (result.Truncated)
+            {
+                Log.Write($"Cleanup output hit the model's token ceiling and lost its tail ({settings.CleanupEngine}); using raw");
+                return raw;
+            }
+
             var cleaned = StripDashes(result.Text.Trim());
 
             if (!PassesGuard(raw, cleaned))
@@ -183,6 +189,8 @@ public static class CleanupPass
             }
         }
 
+        if (!EndSurvived(rawTokens, cleanedTokens)) return false;
+
         var pool = new Dictionary<string, int>();
         foreach (var t in rawTokens)
             pool[t] = pool.TryGetValue(t, out var n) ? n + 1 : 1;
@@ -198,6 +206,47 @@ public static class CleanupPass
         }
 
         return (double)matched / cleanedTokens.Count >= 0.88;
+    }
+
+    /// <summary>
+    /// Catches the one failure the other checks are blind to: the model quietly stopping
+    /// early and dropping the last paragraph or two. Word count still looks fine (the
+    /// tail is a small fraction of a long dictation) and every surviving word is the
+    /// speaker's, so both the retention floor and the overlap check wave it through.
+    ///
+    /// Look at the end specifically. Take the distinctive words from the last stretch of
+    /// the transcript — ones that appear at most twice overall, so common glue words and
+    /// filler can't paper over a missing tail — and require most of them to still be
+    /// present somewhere in the output. Checking "somewhere" rather than "at the end"
+    /// keeps this safe when the model legitimately collapses a repeated block.
+    /// </summary>
+    private static bool EndSurvived(List<string> rawTokens, List<string> cleanedTokens)
+    {
+        const int TailWindow = 30;
+        if (rawTokens.Count < TailWindow * 2) return true; // too short for a tail to hide in
+
+        var counts = new Dictionary<string, int>();
+        foreach (var t in rawTokens)
+            counts[t] = counts.TryGetValue(t, out var n) ? n + 1 : 0 + 1;
+
+        var distinctive = rawTokens
+            .Skip(rawTokens.Count - TailWindow)
+            .Where(t => t.Length > 2 && counts[t] <= 2)
+            .Distinct()
+            .ToList();
+
+        if (distinctive.Count < 4) return true; // nothing distinctive enough to judge by
+
+        var cleanedSet = new HashSet<string>(cleanedTokens);
+        int kept = distinctive.Count(cleanedSet.Contains);
+        double survival = (double)kept / distinctive.Count;
+
+        if (survival < 0.5)
+        {
+            Log.Write($"Guard tail: cleanup dropped the end of the dictation ({kept}/{distinctive.Count} closing words survived)");
+            return false;
+        }
+        return true;
     }
 
     private static List<string> Tokenize(string text)

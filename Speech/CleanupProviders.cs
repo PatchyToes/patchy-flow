@@ -12,7 +12,7 @@ namespace PatchyFlow;
 /// stripping, no fallback logic. CleanupPass owns all of that so every engine
 /// passes through the exact same gate.
 /// </summary>
-public readonly record struct CleanupRaw(string Text, long InputTokens, long OutputTokens);
+public readonly record struct CleanupRaw(string Text, long InputTokens, long OutputTokens, bool Truncated);
 
 /// <summary>A cleanup backend. Given a system prompt and the user's transcript, return the model's text.</summary>
 public interface ICleanupProvider
@@ -37,7 +37,9 @@ public sealed class AnthropicCleanupProvider : ICleanupProvider
         var response = await _client.Messages.Create(new MessageCreateParams
         {
             Model = settings.CleanupModel,
-            MaxTokens = 4096,
+            // Headroom, not a budget: you are only billed for tokens actually generated.
+            // A cap that the model can bump into silently loses the end of a long dictation.
+            MaxTokens = 16000,
             System = system,
             Messages =
             [
@@ -50,8 +52,14 @@ public sealed class AnthropicCleanupProvider : ICleanupProvider
             if (block.TryPickText(out var textBlock))
                 sb.Append(textBlock.Text);
 
+        // Interpolated rather than compared as an enum so this keeps compiling across
+        // SDK revisions that reshape the StopReason type.
+        var stop = $"{response.StopReason}";
+        bool truncated = stop.Contains("max", StringComparison.OrdinalIgnoreCase)
+                      && stop.Contains("token", StringComparison.OrdinalIgnoreCase);
+
         return new CleanupRaw(sb.ToString().Trim(),
-            response.Usage?.InputTokens ?? 0, response.Usage?.OutputTokens ?? 0);
+            response.Usage?.InputTokens ?? 0, response.Usage?.OutputTokens ?? 0, truncated);
     }
 }
 
@@ -97,7 +105,9 @@ public sealed class LocalCleanupProvider : ICleanupProvider
 
         long inTok = root.TryGetProperty("prompt_eval_count", out var p) ? p.GetInt64() : 0;
         long outTok = root.TryGetProperty("eval_count", out var e) ? e.GetInt64() : 0;
-        return new CleanupRaw(content, inTok, outTok);
+        bool truncated = root.TryGetProperty("done_reason", out var dr)
+                      && string.Equals(dr.GetString(), "length", StringComparison.OrdinalIgnoreCase);
+        return new CleanupRaw(content, inTok, outTok, truncated);
     }
 
     /// <summary>
